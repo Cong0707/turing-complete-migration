@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | 0.1059 | `%APPDATA%\Godot\app_userdata\Turing Complete_backup` | `progress.dat` SQLite |
 | 2.0.16 | `%APPDATA%\Godot\app_userdata\Turing Complete` | `_progress.dat`、六列 `levels.txt` |
-| 2.1.276 | `%APPDATA%\Turing Complete` | 四列 `levels.txt`，游戏会自行生成其他状态文件 |
+| 2.1.278 | `%APPDATA%\Turing Complete` | 四列 `levels.txt`，游戏会自行生成其他状态文件 |
 
 电路通常位于：
 
@@ -105,7 +105,7 @@ u8 segment ...                   # 高 3 位方向，低 5 位长度，0 终止
 - 导线路径仍是 v6 风格的一字节段。
 
 v6-v12 不保存 v13+ 的 512 字节 Custom design。工具输出零 design，但不会丢弃
-Custom ID、依赖关系或元件主体。2.1.276 从 `schematics/foundry/` 加载定义时会执行：
+Custom ID、依赖关系或元件主体。2.1.x 从 `schematics/foundry/` 加载定义时会执行：
 
 ```text
 add_custom_prototype
@@ -137,6 +137,18 @@ v15 导线不再保存旧 wire kind，路径段改为 `u16`：高 3 位方向、
 工具写出 v15 后立即完整反解析，并核对元件数和导线数。容器可解压但字段尾随、截断、
 计数错位或路径段非法都不会通过验证。
 
+### 2.1.278 剧情端口注入
+
+当前剧情关卡会把游戏目录 `campaign/<level>/circuit.data` 中的 immutable level input/output
+与用户方案合并，并在保存时把合并结果写回。0.1059 用户方案本身也包含同一组旧端口，
+直接转换会得到重叠的两组端口。`not_gate` 的实测变化为 3 个旧元件加载后变成 5 个：
+NAND 不变，输入和输出各重复一次；随后测试编译器报 `Output does not have property _is_z`。
+
+迁移器在明确属于当前 combinational/sequential campaign 的方案中省略 level interface
+元件，但完整保留连接导线。报告分别记录 `output_component_count`（启动前）和
+`runtime_component_count`（游戏补回端口后）。独立 `schematics/architecture/` 不参与
+campaign 合并，因此必须保留自己的架构输入输出。
+
 ## 无法原样表示的字段
 
 ### disconnected / teleport wire
@@ -158,11 +170,12 @@ v6 的 Program 选择表以数字关卡 ID 为键，v15 使用字符串。工具
 
 ## 真实数据验证
 
-- 0.1059：92 个主电路全为 v6；1484 个元件、5330 条导线，转换到 v15 后逐文件计数一致。
+- 0.1059：92 个源主电路全为 v6；另派生 6 个 OVERTURE 剧情方案，正式目标为 98 个
+  v15。150 个剧情边界端口改由运行时注入，所有导线保留。
 - 2.0.16：v6=90、v7=31、v9=2、v10=108；2125 个元件、5941 条导线，逐文件计数一致。
 - 0.1059 RV64：23 个元件、190 条导线、16 个 Custom；转换后保持。
 - 原生 2.1.276 测试电路：22 个元件、37 条导线，可由本项目 v15 parser 完整读取。
-- 0.1059 自定义元件闭包：34 个 foundry 定义，33 个被引用 ID，135 个引用实例，
+- 0.1059 自定义元件闭包：34 个 foundry 定义，33 个被引用 ID；加入派生方案后 189 个引用实例，
   缺失和重复 ID 均为 0。
 
 这些结果证明结构转换没有把电路清空，但不证明所有替代元件在游戏中的逻辑行为等价。

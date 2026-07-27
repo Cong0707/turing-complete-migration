@@ -138,18 +138,44 @@ def write_current_levels(path: Path, records: list[LevelRecord]) -> None:
 
 
 def campaign_level_ids(game_dir: Path | None) -> set[str] | None:
+    kinds = campaign_level_kinds(game_dir)
+    return set(kinds) if kinds is not None else None
+
+
+def campaign_level_kinds(game_dir: Path | None) -> dict[str, str] | None:
     if game_dir is None:
         return None
     campaign = game_dir / "campaign"
     if not campaign.is_dir():
         return None
-    return {path.name for path in campaign.iterdir() if path.is_dir()}
+    result: dict[str, str] = {}
+    for path in campaign.iterdir():
+        if not path.is_dir():
+            continue
+        kind = ""
+        meta = path / "meta.txt"
+        if meta.is_file():
+            with meta.open("r", encoding="utf-8", errors="replace") as stream:
+                for line in stream:
+                    key, separator, value = line.partition("=")
+                    if separator and key.strip() == "kind":
+                        kind = value.strip()
+                        break
+        result[path.name] = kind
+    return result
 
 
-def _selection_exists(save_root: Path, level_id: str, selected: str) -> bool:
+def _selection_exists(
+    save_root: Path,
+    level_id: str,
+    selected: str,
+    architecture_level_ids: set[str] | None = None,
+) -> bool:
     if not selected:
         return False
-    if level_id == "sandbox":
+    if level_id == "sandbox" or (
+        architecture_level_ids is not None and level_id in architecture_level_ids
+    ):
         return (save_root / "schematics" / "architecture" / selected / "circuit.data").is_file()
     if level_id in {"foundry", "component_factory"}:
         return any(
@@ -168,7 +194,13 @@ def merge_progress(
     current_path = prepared_save_root / "levels.txt"
     current = read_current_levels(current_path)
     legacy = read_legacy_levels(source_root)
-    valid_ids = campaign_level_ids(game_dir)
+    level_kinds = campaign_level_kinds(game_dir)
+    valid_ids = set(level_kinds) if level_kinds is not None else None
+    architecture_level_ids = (
+        {level_id for level_id, kind in level_kinds.items() if kind == "architecture"}
+        if level_kinds is not None
+        else None
+    )
 
     merged = list(current)
     index = {record.level_id: position for position, record in enumerate(merged)}
@@ -182,8 +214,22 @@ def merge_progress(
             skipped.append({"source": record.level_id, "mapped": mapped, "reason": "not in current campaign"})
             continue
         selected = record.selected_schematic
-        if not _selection_exists(prepared_save_root, mapped, selected):
-            selected = "Default" if _selection_exists(prepared_save_root, mapped, "Default") else ""
+        if not _selection_exists(
+            prepared_save_root,
+            mapped,
+            selected,
+            architecture_level_ids,
+        ):
+            selected = (
+                "Default"
+                if _selection_exists(
+                    prepared_save_root,
+                    mapped,
+                    "Default",
+                    architecture_level_ids,
+                )
+                else ""
+            )
 
         if mapped in index:
             old = merged[index[mapped]]
@@ -200,6 +246,49 @@ def merge_progress(
             merged.append(LevelRecord(mapped, record.complete, selected, ""))
             index[mapped] = len(merged) - 1
             imported.append(mapped)
+
+    stage_sources = {
+        record.level_id: record
+        for record in legacy
+        if record.level_id in {"registers", "constants", "program", "turing_complete"}
+        and record.selected_schematic
+    }
+    selected_architecture = next(
+        (
+            stage_sources[level_id].selected_schematic
+            for level_id in ("turing_complete", "program", "constants", "registers")
+            if level_id in stage_sources
+        ),
+        "",
+    )
+    stage_two = "overture_2_alu"
+    if (
+        selected_architecture
+        and (valid_ids is None or stage_two in valid_ids)
+        and _selection_exists(
+            prepared_save_root,
+            stage_two,
+            selected_architecture,
+            architecture_level_ids,
+        )
+    ):
+        complete = any(
+            stage_sources[level_id].complete
+            for level_id in ("constants", "program", "turing_complete")
+            if level_id in stage_sources
+        )
+        if stage_two in index:
+            old = merged[index[stage_two]]
+            merged[index[stage_two]] = LevelRecord(
+                stage_two,
+                old.complete or complete,
+                old.selected_schematic or selected_architecture,
+                old.score_history,
+            )
+        else:
+            merged.append(LevelRecord(stage_two, complete, selected_architecture, ""))
+            index[stage_two] = len(merged) - 1
+            imported.append(stage_two)
 
     write_current_levels(current_path, merged)
     return merged, {

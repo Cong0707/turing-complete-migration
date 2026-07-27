@@ -12,7 +12,12 @@ import shutil
 import uuid
 
 from .legacy_v6 import COM_CUSTOM, SaveFormatError, convert_circuit_bytes, parse_v15
-from .progress import LEVEL_ALIASES, merge_progress
+from .progress import (
+    LEVEL_ALIASES,
+    campaign_level_kinds,
+    merge_progress,
+    read_legacy_levels,
+)
 from .saves import (
     game_is_running,
     hash_tree,
@@ -111,6 +116,29 @@ def _current_unit_relative(relative: Path) -> Path:
     return Path(*parts)
 
 
+def _is_runtime_level_unit(
+    relative: Path,
+    campaign_kinds: dict[str, str] | None,
+) -> bool:
+    if not relative.parts:
+        return False
+    level_id = relative.parts[0]
+    return (
+        campaign_kinds is not None
+        and level_id in campaign_kinds
+        and campaign_kinds[level_id] != "architecture"
+    )
+
+
+OVERTURE_STAGE_LEVELS = (
+    "overture_1_registers",
+    "overture_2_alu",
+    "overture_3_immediates",
+    "overture_4_program",
+    "overture_5_conditionals",
+)
+
+
 def _merge_schematics(
     source_root: Path,
     prepared_root: Path,
@@ -118,6 +146,7 @@ def _merge_schematics(
     *,
     preserve_original: bool,
     include_circuit_backups: bool,
+    campaign_kinds: dict[str, str] | None,
 ) -> dict[str, object]:
     source = source_root / "schematics"
     destination = prepared_root / "schematics"
@@ -149,6 +178,9 @@ def _merge_schematics(
 
         source_circuit = source_unit / "circuit.data"
         destination_circuit = destination_unit / "circuit.data"
+        strip_level_interfaces = (
+            True if _is_runtime_level_unit(relative, campaign_kinds) else None
+        )
         source_info = inspect_circuit(
             source_circuit,
             display_path=(source_relative / "circuit.data").as_posix(),
@@ -160,7 +192,10 @@ def _merge_schematics(
             if preserved.exists():
                 preserved.unlink()
         try:
-            converted, conversion = convert_circuit_bytes(source_circuit.read_bytes())
+            converted, conversion = convert_circuit_bytes(
+                source_circuit.read_bytes(),
+                strip_level_interfaces=strip_level_interfaces,
+            )
         except SaveFormatError as exc:
             raise SaveFormatError(
                 f"cannot convert {source_circuit}: {exc}"
@@ -204,7 +239,10 @@ def _merge_schematics(
                 omitted_backups += 1
                 continue
             try:
-                backup_converted, backup_report = convert_circuit_bytes(backup.read_bytes())
+                backup_converted, backup_report = convert_circuit_bytes(
+                    backup.read_bytes(),
+                    strip_level_interfaces=strip_level_interfaces,
+                )
             except SaveFormatError as exc:
                 raise SaveFormatError(f"cannot convert {backup}: {exc}") from exc
             backup.write_bytes(backup_converted)
@@ -222,6 +260,109 @@ def _merge_schematics(
                 "converted_backups": backup_reports,
             }
         )
+
+    derived_architecture_units: list[dict[str, str]] = []
+    skipped_architecture_derivations: list[dict[str, str]] = []
+    derivation_requests: dict[tuple[str, str], str] = {}
+    legacy_records = read_legacy_levels(source_root)
+    stage_architectures: set[str] = set()
+    for record in legacy_records:
+        selected = record.selected_schematic
+        if not selected:
+            continue
+        architecture_unit = source / "architecture" / selected
+        if not (architecture_unit / "circuit.data").is_file():
+            continue
+        mapped_level = LEVEL_ALIASES.get(record.level_id, record.level_id)
+        if record.level_id in {"registers", "constants", "program", "turing_complete"}:
+            stage_architectures.add(selected)
+        if campaign_kinds is None:
+            needs_level_overlay = mapped_level in OVERTURE_STAGE_LEVELS or mapped_level == "binary_programming"
+        else:
+            needs_level_overlay = (
+                mapped_level in campaign_kinds
+                and campaign_kinds[mapped_level] != "architecture"
+            )
+        if needs_level_overlay:
+            derivation_requests[(mapped_level, selected)] = record.level_id
+
+    for selected in stage_architectures:
+        for level_id in OVERTURE_STAGE_LEVELS:
+            if campaign_kinds is None or level_id in campaign_kinds:
+                derivation_requests.setdefault(
+                    (level_id, selected),
+                    "overture stage chain",
+                )
+
+    for (level_id, selected), source_level in sorted(derivation_requests.items()):
+        architecture_unit = source / "architecture" / selected
+        source_circuit = architecture_unit / "circuit.data"
+        relative = Path(level_id) / selected
+        destination_unit = destination / relative
+        if destination_unit.exists():
+            skipped_architecture_derivations.append({
+                "level": level_id,
+                "architecture": selected,
+                "reason": "destination schematic already exists",
+            })
+            continue
+        destination_unit.mkdir(parents=True)
+        destination_circuit = destination_unit / "circuit.data"
+        source_display = (
+            Path("architecture") / selected / "circuit.data"
+        ).as_posix()
+        source_info = inspect_circuit(source_circuit, display_path=source_display)
+        if preserve_original:
+            shutil.copy2(source_circuit, destination_unit / ORIGINAL_CIRCUIT_NAME)
+        try:
+            converted, conversion = convert_circuit_bytes(
+                source_circuit.read_bytes(),
+                strip_level_interfaces=True,
+            )
+        except SaveFormatError as exc:
+            raise SaveFormatError(
+                f"cannot derive {level_id}/{selected} from {source_circuit}: {exc}"
+            ) from exc
+        destination_circuit.write_bytes(converted)
+        converted_info = inspect_circuit(
+            destination_circuit,
+            display_path=(relative / "circuit.data").as_posix(),
+        )
+        converted_circuit = parse_v15(converted)
+        for component in converted_circuit.components:
+            if component.kind != COM_CUSTOM or not component.custom_id:
+                continue
+            custom_references[component.custom_id] += 1
+            custom_reference_units.setdefault(component.custom_id, set()).add(
+                relative.as_posix()
+            )
+        source_version = conversion.get("source_version")
+        if isinstance(source_version, int):
+            conversion_versions[source_version] += 1
+        quality = conversion.get("mapping_quality_counts", {})
+        if isinstance(quality, dict):
+            for key, count in quality.items():
+                if isinstance(key, str) and isinstance(count, int):
+                    conversion_quality[key] += count
+        teleport_count = conversion.get("teleport_wire_approximation_count", 0)
+        if isinstance(teleport_count, int):
+            teleport_approximations += teleport_count
+        imported_units.append({
+            "source": (Path("architecture") / selected).as_posix(),
+            "destination": relative.as_posix(),
+            "status": "derived_from_legacy_architecture_selection",
+            "source_level": source_level,
+            "source_circuit": source_info.to_dict(),
+            "converted_circuit": converted_info.to_dict(),
+            "conversion": conversion,
+            "original_preserved": preserve_original,
+            "converted_backups": [],
+        })
+        derived_architecture_units.append({
+            "level": level_id,
+            "architecture": selected,
+            "destination": relative.as_posix(),
+        })
 
     copied_loose: list[str] = []
     skipped_conflicts: list[str] = []
@@ -253,6 +394,8 @@ def _merge_schematics(
         "omitted_circuit_backup_count": omitted_backups,
         "copied_loose_files": copied_loose,
         "loose_file_conflicts_skipped": skipped_conflicts,
+        "derived_architecture_units": derived_architecture_units,
+        "skipped_architecture_derivations": skipped_architecture_derivations,
         "custom_dependency_audit": {
             "definition_count": len(custom_definitions),
             "referenced_id_count": len(custom_references),
@@ -328,6 +471,7 @@ def prepare_migration(
             f"{target_inspection.generation}"
         )
     label = source_label or source_inspection.generation.replace(" ", "-")
+    campaign_kinds = campaign_level_kinds(resolved_game_dir)
 
     output_root.mkdir(parents=True, exist_ok=True)
     prepared = output_root / "save"
@@ -350,6 +494,7 @@ def prepare_migration(
         label,
         preserve_original=preserve_original,
         include_circuit_backups=include_circuit_backups,
+        campaign_kinds=campaign_kinds,
     )
     custom_audit = schematic_result["custom_dependency_audit"]
     if custom_audit["missing_definitions"]:
@@ -499,6 +644,11 @@ def verify_save(save_root: Path) -> dict[str, object]:
                             if isinstance(conversion, dict)
                             else None
                         )
+                        expected_runtime_components = (
+                            conversion.get("runtime_component_count")
+                            if isinstance(conversion, dict)
+                            else None
+                        )
                         expected_wires = (
                             conversion.get("output_wire_count")
                             if isinstance(conversion, dict)
@@ -507,9 +657,20 @@ def verify_save(save_root: Path) -> dict[str, object]:
                         circuit_record["actual_component_count"] = actual_components
                         circuit_record["actual_wire_count"] = actual_wires
                         circuit_record["expected_component_count"] = expected_components
+                        circuit_record["expected_runtime_component_count"] = (
+                            expected_runtime_components
+                        )
                         circuit_record["expected_wire_count"] = expected_wires
+                        allowed_component_counts = {
+                            count
+                            for count in (expected_components, expected_runtime_components)
+                            if isinstance(count, int)
+                        }
                         counts_match = (
-                            (not isinstance(expected_components, int) or actual_components == expected_components)
+                            (
+                                not allowed_component_counts
+                                or actual_components in allowed_component_counts
+                            )
                             and (not isinstance(expected_wires, int) or actual_wires == expected_wires)
                         )
                         expected_hash = (

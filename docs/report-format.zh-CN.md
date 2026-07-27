@@ -23,6 +23,8 @@
 - `teleport_wire_approximation_count`：无法原样写入 v15 的 disconnected wire 数量。
 - `converted_circuit_backup_count` / `omitted_circuit_backup_count`：旧历史电路处理结果。
 - `imported_units[]`：每个方案的源、目标、容器元数据和详细 conversion。
+- `derived_architecture_units`：从旧全局架构派生到当前剧情关卡的方案。
+- `skipped_architecture_derivations`：因已有目标方案而跳过的派生请求。
 - `custom_dependency_audit`：foundry 定义数、引用 ID/实例数、缺失或重复定义、零 design
   定义清单以及实际定义目录。
 
@@ -33,6 +35,9 @@ source_version
 output_version
 source_component_count
 output_component_count
+runtime_component_count
+stripped_level_interface_count
+stripped_level_interface_kind_counts
 source_wire_count
 output_wire_count
 mapping_quality_counts
@@ -61,7 +66,8 @@ marker 随候选一起安装。`imported_units[]` 对每个方案记录：
 - `rewritten_with_matching_counts`
 
 其他状态均使 `ok` 为 false。验证不会只依赖解压成功；它会调用 v15 parser 并比较
-实际元件/导线数量。
+实际元件/导线数量。未运行的候选使用 `output_component_count`；游戏注入 immutable
+剧情端口后允许使用 `runtime_component_count`。
 
 `preserved_original_pairs[]` 只为 `original_preserved=true` 的方案生成。正常状态为
 `preserved`。

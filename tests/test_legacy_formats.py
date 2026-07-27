@@ -3,6 +3,9 @@ import unittest
 
 from turing_complete_migration.legacy_v6 import (
     COM_CUSTOM,
+    COM_LEVEL_INPUT_1_PIN,
+    COM_LEVEL_OUTPUT_1_PIN,
+    COM_NAND_BIT,
     COM_RAM,
     convert_circuit_bytes,
     parse_v15,
@@ -64,6 +67,24 @@ def build_direct_enum(version: int, *, teleport: bool = False) -> bytes:
     return bytes([version]) + compress_raw(bytes(raw))
 
 
+def build_v6_level_solution(*, save_id: int = 0, campaign_bound: bool = False) -> bytes:
+    raw = bytearray()
+    raw.extend(struct.pack("<qIqqBIH", save_id, 0, 0, 0, 1, 10_000_000, 0))
+    raw.extend(string("level solution"))
+    raw.extend(struct.pack("<hhBBH", 0, 0, 0, campaign_bound, 0))
+    raw.extend(struct.pack("<H", 0))
+    raw.extend(string(""))
+    raw.extend(struct.pack("<q", 3))
+    for kind, x, permanent_id in ((240, -13, 1), (242, 13, 2), (7, 0, 3)):
+        raw.extend(struct.pack("<HhhBq", kind, x, 0, 0, permanent_id))
+        raw.extend(string(""))
+        raw.extend(struct.pack("<QQh", 0, 0, 0))
+    raw.extend(struct.pack("<qBB", 1, 0, 0))
+    raw.extend(string(""))
+    raw.extend(struct.pack("<hhBB", -13, 0, 13, 0))
+    return bytes([6]) + compress_raw(bytes(raw))
+
+
 class LegacyFormatTests(unittest.TestCase):
     def test_v6_custom_program_and_wire_convert_to_v15(self):
         converted, report = convert_circuit_bytes(build_v6_custom_program())
@@ -98,6 +119,49 @@ class LegacyFormatTests(unittest.TestCase):
                 )
                 if version == 9:
                     self.assertEqual(parsed.wires[0].segments, ((0, 1),))
+
+    def test_v6_campaign_interfaces_are_left_for_current_runtime_to_inject(self):
+        converted, report = convert_circuit_bytes(build_v6_level_solution())
+        parsed = parse_v15(converted)
+
+        self.assertEqual([component.kind for component in parsed.components], [COM_NAND_BIT])
+        self.assertEqual(len(parsed.wires), 1)
+        self.assertEqual(report["source_component_count"], 3)
+        self.assertEqual(report["output_component_count"], 1)
+        self.assertEqual(report["runtime_component_count"], 3)
+        self.assertEqual(report["stripped_level_interface_count"], 2)
+        self.assertEqual(
+            report["stripped_level_interface_kind_counts"],
+            {COM_LEVEL_INPUT_1_PIN: 1, COM_LEVEL_OUTPUT_1_PIN: 1},
+        )
+
+    def test_v6_non_campaign_custom_definition_keeps_level_kinds_by_default(self):
+        converted, report = convert_circuit_bytes(
+            build_v6_level_solution(save_id=1234, campaign_bound=False)
+        )
+        parsed = parse_v15(converted)
+
+        self.assertEqual(len(parsed.components), 3)
+        self.assertEqual(report["stripped_level_interface_count"], 0)
+
+    def test_v6_architecture_keeps_standalone_interfaces_by_default(self):
+        converted, report = convert_circuit_bytes(
+            build_v6_level_solution(save_id=1234, campaign_bound=True)
+        )
+        parsed = parse_v15(converted)
+
+        self.assertEqual(len(parsed.components), 3)
+        self.assertEqual(report["stripped_level_interface_count"], 0)
+
+    def test_explicit_campaign_context_strips_architecture_copy_interfaces(self):
+        converted, report = convert_circuit_bytes(
+            build_v6_level_solution(save_id=1234, campaign_bound=True),
+            strip_level_interfaces=True,
+        )
+        parsed = parse_v15(converted)
+
+        self.assertEqual([component.kind for component in parsed.components], [COM_NAND_BIT])
+        self.assertEqual(report["runtime_component_count"], 3)
 
 
 if __name__ == "__main__":

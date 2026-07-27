@@ -14,7 +14,7 @@ is copied verbatim; the format is reimplemented with Python's struct module.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 import struct
 
@@ -349,6 +349,27 @@ COM_SPLITTER_WORD_4 = 99
 COM_SPLITTER_WORD_8 = 100
 COM_STATIC_INDEXER = 101
 COM_RAM = 118
+
+
+# Current builds merge these immutable components from campaign/circuit.data at
+# load time. Keeping the legacy copies in a user schematic creates duplicate
+# level ports and can make the test compiler bind to the wrong Output object.
+CURRENT_LEVEL_INTERFACE_KINDS = {
+    COM_LEVEL_OUTPUT_8_PIN,
+    COM_LEVEL_INPUT_1_PIN,
+    COM_LEVEL_INPUT_WORD,
+    COM_LEVEL_INPUT_SWITCHED,
+    COM_LEVEL_INPUT_2_PIN,
+    COM_LEVEL_INPUT_3_PIN,
+    COM_LEVEL_INPUT_4_PIN,
+    COM_LEVEL_OUTPUT_1_PIN,
+    COM_LEVEL_OUTPUT_WORD,
+    COM_LEVEL_OUTPUT_SWITCHED,
+    COM_LEVEL_OUTPUT_2_PIN,
+    COM_LEVEL_OUTPUT_3_PIN,
+    COM_LEVEL_OUTPUT_4_PIN,
+    COM_LEVEL_OUTPUT_COUNTER,
+}
 
 
 LEGACY_KIND_NAMES = {
@@ -784,7 +805,32 @@ def convert_component(component: LegacyComponent) -> CurrentComponent | None:
     )
 
 
-def convert_legacy_circuit(circuit: LegacyCircuit) -> CurrentCircuit:
+def _strip_level_interfaces(
+    circuit: CurrentCircuit,
+    strip_level_interfaces: bool,
+) -> tuple[CurrentCircuit, list[CurrentComponent]]:
+    if not strip_level_interfaces:
+        return circuit, []
+    removed = [
+        component
+        for component in circuit.components
+        if component.kind in CURRENT_LEVEL_INTERFACE_KINDS
+    ]
+    if not removed:
+        return circuit, []
+    kept = [
+        component
+        for component in circuit.components
+        if component.kind not in CURRENT_LEVEL_INTERFACE_KINDS
+    ]
+    return replace(circuit, components=kept), removed
+
+
+def convert_legacy_circuit(
+    circuit: LegacyCircuit,
+    *,
+    strip_level_interfaces: bool | None = None,
+) -> CurrentCircuit:
     components: list[CurrentComponent] = []
     for component in circuit.components:
         converted = convert_component(component)
@@ -794,7 +840,7 @@ def convert_legacy_circuit(circuit: LegacyCircuit) -> CurrentCircuit:
         {component.custom_id for component in components if component.kind == COM_CUSTOM and component.custom_id}
     )
     wires = [CurrentWire(w.color, w.comment, w.start, w.segments) for w in circuit.wires]
-    return CurrentCircuit(
+    current = CurrentCircuit(
         custom_id=circuit.save_id,
         hub_id=circuit.hub_id,
         gate=circuit.gate,
@@ -811,6 +857,10 @@ def convert_legacy_circuit(circuit: LegacyCircuit) -> CurrentCircuit:
         components=components,
         wires=wires,
     )
+    if strip_level_interfaces is None:
+        strip_level_interfaces = circuit.save_id == 0
+    current, _ = _strip_level_interfaces(current, strip_level_interfaces)
+    return current
 
 
 def _write_current_component(writer: _Writer, component: CurrentComponent) -> None:
@@ -1146,14 +1196,25 @@ def parse_v15(data: bytes) -> CurrentCircuit:
     )
 
 
-def convert_v6_bytes(data: bytes) -> tuple[bytes, dict[str, object]]:
+def convert_v6_bytes(
+    data: bytes,
+    *,
+    strip_level_interfaces: bool | None = None,
+) -> tuple[bytes, dict[str, object]]:
     legacy = parse_legacy_v6(data)
-    current = convert_legacy_circuit(legacy)
+    if strip_level_interfaces is None:
+        strip_level_interfaces = legacy.save_id == 0
+    unstripped = convert_legacy_circuit(legacy, strip_level_interfaces=False)
+    current, removed_interfaces = _strip_level_interfaces(
+        unstripped,
+        strip_level_interfaces,
+    )
     converted = write_v15(current)
     reparsed = parse_v15(converted)
     old_kinds = Counter(component.kind for component in legacy.components)
     mapped_qualities = Counter()
     replacements: list[dict[str, object]] = []
+    removed_interface_kinds = Counter(component.kind for component in removed_interfaces)
     for kind, count in sorted(old_kinds.items()):
         if kind in _DELETED_KINDS:
             mapped_qualities["deleted"] += count
@@ -1167,6 +1228,18 @@ def convert_v6_bytes(data: bytes) -> tuple[bytes, dict[str, object]]:
             })
             continue
         mapping = COMPONENT_MAP[kind]
+        if mapping.target_kind in removed_interface_kinds:
+            mapped_qualities["campaign_runtime_interface"] += count
+            replacements.append({
+                "legacy_kind": kind,
+                "legacy_name": legacy_kind_name(kind),
+                "count": count,
+                "quality": "campaign_runtime_interface",
+                "target_kind": mapping.target_kind,
+                "target_word_size": mapping.word_size,
+                "note": "omitted because the current campaign injects this immutable level interface",
+            })
+            continue
         mapped_qualities[mapping.quality] += count
         if mapping.quality != "exact":
             replacements.append({
@@ -1183,6 +1256,9 @@ def convert_v6_bytes(data: bytes) -> tuple[bytes, dict[str, object]]:
         "output_version": CURRENT_VERSION,
         "source_component_count": len(legacy.components),
         "output_component_count": len(reparsed.components),
+        "runtime_component_count": len(reparsed.components) + len(removed_interfaces),
+        "stripped_level_interface_count": len(removed_interfaces),
+        "stripped_level_interface_kind_counts": dict(sorted(removed_interface_kinds.items())),
         "source_wire_count": len(legacy.wires),
         "output_wire_count": len(reparsed.wires),
         "source_kind_counts": {
@@ -1205,21 +1281,39 @@ def convert_v6_file(source: Path, destination: Path) -> dict[str, object]:
     return report
 
 
-def convert_direct_enum_bytes(data: bytes) -> tuple[bytes, dict[str, object]]:
+def convert_direct_enum_bytes(
+    data: bytes,
+    *,
+    strip_level_interfaces: bool | None = None,
+) -> tuple[bytes, dict[str, object]]:
     source_version = data[0] if data else None
-    circuit = parse_direct_enum_version(data)
+    source_circuit = parse_direct_enum_version(data)
+    if strip_level_interfaces is None:
+        strip_level_interfaces = source_circuit.custom_id == 0
+    circuit, removed_interfaces = _strip_level_interfaces(
+        source_circuit,
+        strip_level_interfaces,
+    )
     converted = write_v15(circuit)
     reparsed = parse_v15(converted)
-    kind_counts = Counter(component.kind for component in circuit.components)
+    kind_counts = Counter(component.kind for component in source_circuit.components)
+    removed_interface_kinds = Counter(component.kind for component in removed_interfaces)
+    exact_count = len(source_circuit.components) - len(removed_interfaces)
+    mapping_quality = {"exact": exact_count}
+    if removed_interfaces:
+        mapping_quality["campaign_runtime_interface"] = len(removed_interfaces)
     report = {
         "source_version": source_version,
         "output_version": CURRENT_VERSION,
-        "source_component_count": len(circuit.components),
+        "source_component_count": len(source_circuit.components),
         "output_component_count": len(reparsed.components),
-        "source_wire_count": len(circuit.wires),
+        "runtime_component_count": len(reparsed.components) + len(removed_interfaces),
+        "stripped_level_interface_count": len(removed_interfaces),
+        "stripped_level_interface_kind_counts": dict(sorted(removed_interface_kinds.items())),
+        "source_wire_count": len(source_circuit.wires),
         "output_wire_count": len(reparsed.wires),
         "source_kind_counts": dict(sorted(kind_counts.items())),
-        "mapping_quality_counts": {"exact": len(circuit.components)},
+        "mapping_quality_counts": mapping_quality,
         "replacements": [],
         "custom_component_count": sum(
             1 for item in reparsed.components if item.kind == COM_CUSTOM
@@ -1235,29 +1329,57 @@ def convert_direct_enum_bytes(data: bytes) -> tuple[bytes, dict[str, object]]:
     return converted, report
 
 
-def convert_circuit_bytes(data: bytes) -> tuple[bytes, dict[str, object]]:
+def convert_circuit_bytes(
+    data: bytes,
+    *,
+    strip_level_interfaces: bool | None = None,
+) -> tuple[bytes, dict[str, object]]:
     """Convert any supported legacy circuit to v15 and verify the result."""
 
     if not data:
         raise SaveFormatError("empty circuit file")
     version = data[0]
     if version == LEGACY_VERSION:
-        return convert_v6_bytes(data)
+        return convert_v6_bytes(
+            data,
+            strip_level_interfaces=strip_level_interfaces,
+        )
     if version in DIRECT_ENUM_VERSIONS:
-        return convert_direct_enum_bytes(data)
+        return convert_direct_enum_bytes(
+            data,
+            strip_level_interfaces=strip_level_interfaces,
+        )
     if version == CURRENT_VERSION:
-        circuit = parse_v15(data)
-        return data, {
+        source_circuit = parse_v15(data)
+        if strip_level_interfaces is None:
+            strip_level_interfaces = False
+        circuit, removed_interfaces = _strip_level_interfaces(
+            source_circuit,
+            strip_level_interfaces,
+        )
+        converted = write_v15(circuit) if removed_interfaces else data
+        removed_interface_kinds = Counter(component.kind for component in removed_interfaces)
+        return converted, {
             "source_version": CURRENT_VERSION,
             "output_version": CURRENT_VERSION,
-            "source_component_count": len(circuit.components),
+            "source_component_count": len(source_circuit.components),
             "output_component_count": len(circuit.components),
-            "source_wire_count": len(circuit.wires),
+            "runtime_component_count": len(circuit.components) + len(removed_interfaces),
+            "stripped_level_interface_count": len(removed_interfaces),
+            "stripped_level_interface_kind_counts": dict(sorted(removed_interface_kinds.items())),
+            "source_wire_count": len(source_circuit.wires),
             "output_wire_count": len(circuit.wires),
             "source_kind_counts": dict(
-                sorted(Counter(item.kind for item in circuit.components).items())
+                sorted(Counter(item.kind for item in source_circuit.components).items())
             ),
-            "mapping_quality_counts": {"already_current": len(circuit.components)},
+            "mapping_quality_counts": {
+                "already_current": len(circuit.components),
+                **(
+                    {"campaign_runtime_interface": len(removed_interfaces)}
+                    if removed_interfaces
+                    else {}
+                ),
+            },
             "replacements": [],
             "custom_component_count": sum(
                 1 for item in circuit.components if item.kind == COM_CUSTOM

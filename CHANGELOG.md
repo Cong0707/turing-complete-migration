@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.2 - 2026-07-27
+
+- Omit legacy level-input/output components from current campaign overlays so
+  the 2.1.278 runtime can inject its immutable campaign ports exactly once.
+- Keep the same interfaces in standalone `architecture/` circuits used by the
+  sandbox; wires are retained in both cases.
+- Record both prepared and runtime component counts, and accept the documented
+  runtime-injected count during postflight verification.
+- Derive the legacy global OVERTURE architecture into the five current
+  Overture-building stages and `binary_programming`, while preserving the
+  standalone OVERTURE schematic.
+- Preserve architecture selections for current `kind = architecture` levels
+  and synthesize the missing `overture_2_alu` progress row.
+- Regenerate the real 0.1059 migration as 98 verified v15 circuits with no
+  retained backup; expand the generated-fixture suite to 32 tests.
+
 ## 0.2.1 - 2026-07-27
 
 - Map legacy `schematics/component_factory/` definitions to the current

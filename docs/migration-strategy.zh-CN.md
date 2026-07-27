@@ -7,6 +7,7 @@
   -> 识别每个 circuit.data 的实际版本
   -> v6 旧枚举解析 / v7-v10 直接枚举解析
   -> 统一 CurrentCircuit 内存模型
+  -> 按当前 campaign kind 省略会由运行时注入的旧边界端口
   -> 写出 v15
   -> 反解析 v15 并核对元件、导线数量
   -> 合并可证明的进度
@@ -27,6 +28,9 @@
 - 旧 `component_factory` 必须映射为当前 `foundry`；分类和元件名等内部路径保持不变。
 - 准备阶段收集每个 Custom 定义的 circuit custom ID 和全部引用 ID。缺失定义或一个 ID
   对应多个定义时拒绝生成候选。
+- 0.1059 的 Overture 教程原本直接编辑全局 `architecture/OVERTURE`；2.1.x 改成五个
+  独立阶段。若旧进度选择了该架构，工具为五个阶段及 `binary_programming` 派生同名
+  用户方案，派生副本去掉旧边界端口，独立沙盒架构保持完整。
 
 ## 保留策略
 
@@ -91,9 +95,11 @@ v6-v12 没有当前 512 字节 design。定义写入 foundry 后，2.1.x 的
 1. `circuit.data` 存在且 raw Snappy 容器有效。
 2. 外层版本必须为 15。
 3. v15 字段必须完整解析到流末尾。
-4. 元件数与转换报告的 output component count 一致。
+4. 未启动游戏时元件数与 `output_component_count` 一致；游戏重写后也允许等于
+   `runtime_component_count`，后者包含当前 campaign 注入的 immutable 端口。
 5. 导线数与转换报告的 output wire count 一致。
-6. 游戏未改写时 SHA-256 与准备结果一致；游戏正常重写但数量一致时允许哈希变化。
+6. 游戏未改写时 SHA-256 与准备结果一致；游戏正常注入端口或重写但属于上述允许计数时
+   允许哈希变化。
 7. 仅当 marker 声明保留原件时，检查 `_tcm_original_circuit.data` 的存在和哈希。
 
 `postflight` 报告数量不符、格式回退、文件缺失或原件损坏。它不会把“哈希变化但结构

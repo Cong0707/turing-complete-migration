@@ -1,6 +1,6 @@
 # Forum Post Draft
 
-## Legacy save migration tool for 0.1059 / 2.0.16 to 2.1.276
+## Legacy save migration tool for 0.1059 / 2.0.16 to 2.1.278
 
 I have published a Python tool that directly converts legacy Turing Complete
 circuits to the current v15 save format.
@@ -21,15 +21,19 @@ The tool bypasses that path and:
 - preserves both sides of schematic name collisions;
 - keeps the current `settings.txt`;
 - maps only evidence-backed campaign completion states;
+- avoids duplicate campaign inputs/outputs by leaving immutable ports for the
+  current runtime to inject;
+- derives the old global OVERTURE architecture into the current staged levels;
 - reports every approximate/placeholder component mapping;
 - supports safe backup defaults or explicit no-retention options;
 - detects missing circuits and count-changing rewrites after loading.
 
-Validation so far: 92/92 circuits from 0.1059 and 231/231 mixed v6/v7/v9/v10
-circuits from 2.0.16 converted with per-file component/wire counts preserved.
+Validation so far: all 92 source circuits from 0.1059 plus six derived OVERTURE
+stage circuits produce 98 verified v15 circuits. All wires are retained; 150
+campaign ports are intentionally injected by the current runtime.
 One real RV64 design remained 23 components and 190 wires, including 16 Custom
 instances. Its 34 foundry definitions cover all 33 referenced Custom IDs and
-135 Custom instances with no missing or duplicate definition.
+189 reported Custom instances after derivation with no missing or duplicate definition.
 
 The project includes format notes, level mappings, report documentation and
 tests. Please do not attach complete saves to issues because `settings.txt` may

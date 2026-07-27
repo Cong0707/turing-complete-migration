@@ -1,9 +1,9 @@
 # 关卡进度映射
 
-迁移工具只把“能证明是同一关卡或明确替代关系”的旧完成状态写入 2.1.276。
+迁移工具只把“能证明是同一关卡或明确替代关系”的旧完成状态写入 2.1.278。
 同名且仍存在的关卡直接保留；改名关卡使用下表。旧分数不迁移。
 
-| 旧 ID | 2.1.276 ID | 依据 |
+| 旧 ID | 2.1.278 ID | 依据 |
 | --- | --- | --- |
 | `crude_awakening` | `introduction` | 同一开场关卡，标题和剧情一致 |
 | `component_factory` | `foundry` | 工具关卡及说明文字一致 |
@@ -23,11 +23,16 @@
 | `sorter` | `sort` | Delicious Order 排序任务一致 |
 | `ai_showdown` | `nim` | 12 张牌、每次取 1～3 张的对局规则一致 |
 
+旧 Overture 流程把 `registers`、`constants`、`program`、`turing_complete` 的工作直接
+保存在全局 `architecture/OVERTURE`。新版把它拆为五个关卡。工具会把该全局架构派生到
+`overture_1_registers`～`overture_5_conditionals`，并根据已到达后续阶段的证据补出
+`overture_2_alu` 行；派生结果是兼容起点，不代表能直接通过新版测试。
+
 ## 0.1059 实测结果
 
-实测数据库有 75 行，其中 70 行完成。以 2.1.276 的 `campaign/` 过滤并应用上表后：
+实测数据库有 75 行，其中 70 行完成。以 2.1.278 的 `campaign/` 过滤并应用上表后：
 
-- 最终 `levels.txt` 有 60 行，其中 57 行完成。
+- 最终 `levels.txt` 有 61 行；新增的一行是有后续完成证据的 `overture_2_alu`。
 - 15 个旧 ID 因已删除或无法证明等价而跳过：
   `wide_instructions`、`stack`、`spacial_invasion`、`computing_codes`、
   `tick_tock`、`leg_1`～`leg_4`、`byte_or`、`ram`、`test_lab`、

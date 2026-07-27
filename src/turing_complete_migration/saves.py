@@ -19,7 +19,7 @@ DEFAULT_SAVE_ROOTS = {
     "0.1059": Path.home()
     / "AppData/Roaming/Godot/app_userdata/Turing Complete_backup",
     "2.0.16": Path.home() / "AppData/Roaming/Godot/app_userdata/Turing Complete",
-    "2.1.276": Path.home() / "AppData/Roaming/Turing Complete",
+    "2.1.x": Path.home() / "AppData/Roaming/Turing Complete",
 }
 
 DEFAULT_GAME_DIR = Path(r"D:\Game\Steam\steamapps\common\Turing Complete")

@@ -12,11 +12,14 @@ and wire counts.
 
 - Reads circuit versions 6, 7, 9, 10 and 15; always produces v15.
 - Preserves component/wire counts, IDs, widths, custom-component references,
-  selected programs, linked components and supported settings.
+  selected programs, linked components and supported settings. Campaign ports
+  are intentionally left for the current runtime to inject once.
 - Maps legacy `schematics/component_factory/` definitions to the current
   `schematics/foundry/` index and validates the complete Custom-ID closure.
 - Migrates evidence-backed campaign completion state from 0.x SQLite or the
   2.0.x six-column `levels.txt` format.
+- Derives the legacy global OVERTURE architecture into the five current
+  Overture-building stages and `binary_programming`.
 - Works with an existing current save or a current save path that does not yet
   exist.
 - Keeps the source save read-only.
@@ -31,6 +34,12 @@ payload (`custom_id` and displacement), misaligns the rest of the stream, and
 can rewrite a complex CPU as a blank circuit.
 
 This project bypasses that path with an explicit v6-to-v15 conversion.
+
+Current campaign levels also merge immutable ports from their bundled
+`campaign/<level>/circuit.data`. Migrating the legacy copies as well creates
+duplicate inputs/outputs and can make the test compiler fail on a missing
+`Output._is_z`. The tool omits those legacy ports only in campaign overlays,
+keeps their wires, and retains the ports in standalone sandbox architectures.
 
 ## Install
 
@@ -70,15 +79,17 @@ recovery options and should only be used deliberately.
 
 ## Validation
 
-- 0.1059: 92/92 main circuits, 1,484 components and 5,330 wires converted with
-  per-file counts preserved.
+- 0.1059: all 92 source circuits converted, plus six OVERTURE-derived current
+  campaign schematics, producing 98 verified v15 circuits. 150 campaign ports
+  are intentionally runtime-injected; all wires are retained.
 - 2.0.16: 231/231 mixed v6/v7/v9/v10 circuits, 2,125 components and 5,941 wires
   converted with per-file counts preserved.
 - A real RV64 design remained 23 components and 190 wires, including 16 Custom
   instances.
-- 34 foundry definitions cover all 33 referenced Custom IDs and 135 instances,
+- 34 foundry definitions cover all 33 referenced Custom IDs and 189 reported
+  instances after OVERTURE derivation,
   with no missing or duplicate definitions.
-- The repository has 26 generated-fixture tests and contains no real save data.
+- The repository has 32 generated-fixture tests and contains no real save data.
 
 ## Limitations
 

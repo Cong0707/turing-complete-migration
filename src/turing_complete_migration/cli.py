@@ -70,10 +70,10 @@ def interactive() -> int:
             if choice == "0":
                 return 0
             if choice == "1":
-                _print_json(inspect_save(_ask_path("存档路径", DEFAULT_SAVE_ROOTS["2.1.276"])).to_dict())
+                _print_json(inspect_save(_ask_path("存档路径", DEFAULT_SAVE_ROOTS["2.1.x"])).to_dict())
             elif choice == "2":
                 source = _choose_source()
-                target = _ask_path("最新版目标存档路径", DEFAULT_SAVE_ROOTS["2.1.276"])
+                target = _ask_path("最新版目标存档路径", DEFAULT_SAVE_ROOTS["2.1.x"])
                 default_output = Path.cwd() / f"migration-output-{datetime.now():%Y%m%d-%H%M%S}"
                 output = _ask_path("迁移输出目录", default_output)
                 game_dir = _ask_path("最新版游戏目录", DEFAULT_GAME_DIR)
@@ -96,7 +96,7 @@ def interactive() -> int:
                 _print_json(verify_save(_ask_path("要验证的存档或输出/save 路径")))
             elif choice == "4":
                 prepared = _ask_path("已准备的 output/save 路径")
-                target = _ask_path("最新版目标存档路径", DEFAULT_SAVE_ROOTS["2.1.276"])
+                target = _ask_path("最新版目标存档路径", DEFAULT_SAVE_ROOTS["2.1.x"])
                 create_backup = _ask_yes_no("安装前保留当前目标存档备份？")
                 steam_cloud_disabled = _ask_yes_no(
                     "如果 Steam 仍在运行，是否已确认关闭本游戏的 Steam Cloud？",
@@ -123,13 +123,13 @@ def interactive() -> int:
                     print("已取消。")
             elif choice == "5":
                 backup = _ask_path("要恢复的 .tcm-backup-* 目录")
-                target = _ask_path("最新版目标存档路径", DEFAULT_SAVE_ROOTS["2.1.276"])
+                target = _ask_path("最新版目标存档路径", DEFAULT_SAVE_ROOTS["2.1.x"])
                 if _confirm_exact("回滚前仍会备份当前目录。", "回滚存档"):
                     _print_json(rollback_backup(backup, target))
                 else:
                     print("已取消。")
             elif choice == "6":
-                _print_json(postflight_check(_ask_path("游戏运行后的存档路径", DEFAULT_SAVE_ROOTS["2.1.276"])))
+                _print_json(postflight_check(_ask_path("游戏运行后的存档路径", DEFAULT_SAVE_ROOTS["2.1.x"])))
             else:
                 print("无效选择。")
         except (OSError, ValueError, RuntimeError) as exc:
