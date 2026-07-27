@@ -2,6 +2,7 @@ import struct
 import unittest
 
 from turing_complete_migration.legacy_v6 import (
+    COM_CONSTANT,
     COM_CUSTOM,
     COM_LEVEL_INPUT_1_PIN,
     COM_LEVEL_OUTPUT_1_PIN,
@@ -67,6 +68,43 @@ def build_direct_enum(version: int, *, teleport: bool = False) -> bytes:
     return bytes([version]) + compress_raw(bytes(raw))
 
 
+def build_intermediate_current(version: int) -> bytes:
+    if version not in (13, 14):
+        raise ValueError("fixture only supports versions 13 and 14")
+    raw = bytearray()
+    raw.extend(struct.pack("<qIqqBQH", 0, 7, 12, 34, 1, 10_000_000, 1))
+    raw.extend(struct.pack("<q", 456))
+    raw.extend(string(f"version {version}"))
+    raw.extend(struct.pack("<BHH", 2, 9, 3))
+    raw.extend(b"abc")
+    raw.extend(string("hub"))
+    raw.extend(struct.pack("<q", 2))
+
+    raw.extend(struct.pack("<HhhBq", COM_CONSTANT, 4, -5, 2, 99))
+    raw.extend(string("0x2a"))
+    raw.extend(struct.pack("<HQQqhqB", 2, 7, 8, -3, -2, 64, 1))
+    if version == 14:
+        raw.extend(struct.pack("<qq", 123, 456))
+    raw.extend(struct.pack("<BBH", 1, 9, 1))
+    raw.extend(struct.pack("<qq", 10, 20))
+    raw.extend(string("link"))
+    raw.extend(struct.pack("<qqH", 30, 40, 1))
+    raw.extend(string("level"))
+    raw.extend(string("program"))
+
+    raw.extend(struct.pack("<HhhBq", COM_CUSTOM, -8, 6, 1, 100))
+    raw.extend(string("custom label"))
+    raw.extend(struct.pack("<HqhqB", 0, 0, 3, 8, 0))
+    if version == 14:
+        raw.extend(struct.pack("<qq", -1, 0))
+    raw.extend(struct.pack("<BBHHqHqq", 0, 0, 0, 0, 1234, 1, 99, 16))
+
+    raw.extend(struct.pack("<qB", 1, 5))
+    raw.extend(string("wire"))
+    raw.extend(struct.pack("<hhHHH", -1, 2, (3 << 13) | 12, (7 << 13) | 2, 0))
+    return bytes([version]) + compress_raw(bytes(raw))
+
+
 def build_v6_level_solution(*, save_id: int = 0, campaign_bound: bool = False) -> bytes:
     raw = bytearray()
     raw.extend(struct.pack("<qIqqBIH", save_id, 0, 0, 0, 1, 10_000_000, 0))
@@ -119,6 +157,47 @@ class LegacyFormatTests(unittest.TestCase):
                 )
                 if version == 9:
                     self.assertEqual(parsed.wires[0].segments, ((0, 1),))
+
+    def test_v13_v14_convert_complete_current_fields_to_v15(self):
+        for version in (13, 14):
+            with self.subTest(version=version):
+                converted, report = convert_circuit_bytes(
+                    build_intermediate_current(version)
+                )
+                parsed = parse_v15(converted)
+
+                self.assertEqual(report["source_version"], version)
+                self.assertEqual(report["output_version"], 15)
+                self.assertEqual(len(parsed.components), 2)
+                constant, custom = parsed.components
+                self.assertEqual(constant.kind, COM_CONSTANT)
+                self.assertEqual(constant.user_label, "")
+                self.assertEqual(constant.custom_string, "0x2a")
+                self.assertEqual(constant.settings, (7, 8))
+                self.assertTrue(constant.immutable)
+                self.assertEqual(
+                    (constant.cost_gate, constant.cost_delay),
+                    (123, 456) if version == 14 else (-1, 0),
+                )
+                self.assertTrue(constant.little_endian)
+                self.assertEqual(constant.init_data, 9)
+                self.assertEqual(
+                    constant.linked_components,
+                    ((10, 20, "link", 30, 40),),
+                )
+                self.assertEqual(
+                    constant.selected_programs,
+                    (("level", "program"),),
+                )
+                self.assertEqual(custom.user_label, "custom label")
+                self.assertEqual(custom.custom_string, "")
+                self.assertEqual(custom.custom_id, 1234)
+                self.assertEqual(custom.custom_word_sizes, ((99, 16),))
+                self.assertEqual(len(parsed.wires), 1)
+                self.assertEqual(parsed.wires[0].color, 5)
+                self.assertEqual(parsed.wires[0].comment, "wire")
+                self.assertEqual(parsed.wires[0].start, (-1, 2))
+                self.assertEqual(parsed.wires[0].segments, ((3, 12), (7, 2)))
 
     def test_v6_campaign_interfaces_are_left_for_current_runtime_to_inject(self):
         converted, report = convert_circuit_bytes(build_v6_level_solution())

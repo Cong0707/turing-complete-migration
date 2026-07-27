@@ -18,7 +18,7 @@
 ### schematics
 
 - `converted_unit_count`：转换的主方案数。
-- `source_version_counts`：v6/v7/v9/v10/v15 输入分布。
+- `source_version_counts`：v6/v7/v9/v10/v13/v14/v15 输入分布。
 - `mapping_quality_counts`：`exact`、`approximate`、`placeholder` 等实例数量。
 - `teleport_wire_approximation_count`：无法原样写入 v15 的 disconnected wire 数量。
 - `converted_circuit_backup_count` / `omitted_circuit_backup_count`：旧历史电路处理结果。
@@ -36,10 +36,16 @@ output_version
 source_component_count
 output_component_count
 runtime_component_count
+runtime_injected_component_count       # 有当前 campaign 基础电路时
+runtime_campaign_source_version        # 基础电路外层版本
+runtime_campaign_component_count       # 基础电路总元件数
+runtime_campaign_wire_count            # 基础电路总导线数
 stripped_level_interface_count
 stripped_level_interface_kind_counts
 source_wire_count
 output_wire_count
+runtime_injected_wire_count            # 有当前 campaign 基础电路时
+runtime_wire_count                     # 有当前 campaign 基础电路时
 mapping_quality_counts
 replacements
 custom_component_count
@@ -66,8 +72,9 @@ marker 随候选一起安装。`imported_units[]` 对每个方案记录：
 - `rewritten_with_matching_counts`
 
 其他状态均使 `ok` 为 false。验证不会只依赖解压成功；它会调用 v15 parser 并比较
-实际元件/导线数量。未运行的候选使用 `output_component_count`；游戏注入 immutable
-剧情端口后允许使用 `runtime_component_count`。
+实际元件/导线数量。未运行的候选使用 output 计数；游戏注入 immutable 剧情脚手架后
+允许使用 runtime 计数。runtime 元件数来自当前 `campaign/<level>/circuit.data` 的
+immutable 元件，runtime 导线数用于兼容运行时把基础导线一并写回的情况。
 
 `preserved_original_pairs[]` 只为 `original_preserved=true` 的方案生成。正常状态为
 `preserved`。

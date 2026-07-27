@@ -5,7 +5,7 @@
 ```text
 只读旧存档
   -> 识别每个 circuit.data 的实际版本
-  -> v6 旧枚举解析 / v7-v10 直接枚举解析
+  -> v6 旧枚举解析 / v7-v10、v13-v14 当前枚举解析
   -> 统一 CurrentCircuit 内存模型
   -> 按当前 campaign kind 省略会由运行时注入的旧边界端口
   -> 写出 v15
@@ -96,8 +96,9 @@ v6-v12 没有当前 512 字节 design。定义写入 foundry 后，2.1.x 的
 2. 外层版本必须为 15。
 3. v15 字段必须完整解析到流末尾。
 4. 未启动游戏时元件数与 `output_component_count` 一致；游戏重写后也允许等于
-   `runtime_component_count`，后者包含当前 campaign 注入的 immutable 端口。
-5. 导线数与转换报告的 output wire count 一致。
+   `runtime_component_count`，后者按当前 campaign 基础电路中的 immutable 脚手架计算。
+5. 导线数允许等于 `output_wire_count`；若运行时把基础导线一并写回，也允许等于
+   `runtime_wire_count`。
 6. 游戏未改写时 SHA-256 与准备结果一致；游戏正常注入端口或重写但属于上述允许计数时
    允许哈希变化。
 7. 仅当 marker 声明保留原件时，检查 `_tcm_original_circuit.data` 的存在和哈希。

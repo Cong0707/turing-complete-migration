@@ -1,4 +1,4 @@
-"""Direct conversion between the 0.x version-6 and current version-15 formats.
+"""Direct conversion from supported legacy circuit formats to version 15.
 
 The legacy component enum was replaced without an on-disk migration table.
 Consequently, current builds interpret version-6 component numbers using the
@@ -24,7 +24,13 @@ from .snappy import compress_raw, decompress_raw
 LEGACY_VERSION = 6
 CURRENT_VERSION = 15
 DIRECT_ENUM_VERSIONS = {7, 9, 10}
-SUPPORTED_INPUT_VERSIONS = {LEGACY_VERSION, *DIRECT_ENUM_VERSIONS, CURRENT_VERSION}
+INTERMEDIATE_CURRENT_VERSIONS = {13, 14}
+SUPPORTED_INPUT_VERSIONS = {
+    LEGACY_VERSION,
+    *DIRECT_ENUM_VERSIONS,
+    *INTERMEDIATE_CURRENT_VERSIONS,
+    CURRENT_VERSION,
+}
 CUSTOM_OFFSET = (15, 15)
 TELEPORT_WIRE = 0x20
 
@@ -1196,6 +1202,126 @@ def parse_v15(data: bytes) -> CurrentCircuit:
     )
 
 
+def _parse_v13_v14_component(reader: _Reader, version: int) -> CurrentComponent:
+    kind = reader.u16()
+    if kind > 124:
+        raise SaveFormatError(f"version {version} component kind {kind} exceeds the current enum")
+    position = reader.point()
+    rotation = reader.u8()
+    permanent_id = reader.i64()
+    label = reader.string()
+    if kind in _CUSTOM_STRING_TARGETS:
+        user_label, custom_string = "", label
+    else:
+        user_label, custom_string = label, ""
+    settings = tuple(reader.u64() for _ in range(reader.u16()))
+    buffer_size = reader.i64()
+    ui_order = reader.i16()
+    word_size = reader.i64()
+    immutable = reader.bool()
+    if version == 14:
+        cost_gate = reader.i64()
+        cost_delay = reader.i64()
+    else:
+        cost_gate, cost_delay = -1, 0
+    little_endian = reader.bool()
+    init_data = reader.u8()
+    linked = tuple(
+        (reader.i64(), reader.i64(), reader.string(), reader.i64(), reader.i64())
+        for _ in range(reader.u16())
+    )
+    selected = tuple((reader.string(), reader.string()) for _ in range(reader.u16()))
+    custom_id = 0
+    custom_word_sizes: tuple[tuple[int, int], ...] = ()
+    if kind == COM_CUSTOM:
+        custom_id = reader.i64()
+        custom_word_sizes = tuple((reader.i64(), reader.i64()) for _ in range(reader.u16()))
+    return CurrentComponent(
+        kind,
+        position,
+        rotation,
+        permanent_id,
+        user_label,
+        custom_string,
+        settings,
+        buffer_size,
+        ui_order,
+        word_size,
+        immutable,
+        cost_gate,
+        cost_delay,
+        little_endian,
+        init_data,
+        linked,
+        selected,
+        custom_id,
+        custom_word_sizes,
+    )
+
+
+def parse_intermediate_current_version(data: bytes) -> CurrentCircuit:
+    if not data or data[0] not in INTERMEDIATE_CURRENT_VERSIONS:
+        version = data[0] if data else None
+        raise SaveFormatError(f"expected circuit version 13 or 14, got {version}")
+    version = data[0]
+    reader = _Reader(decompress_raw(data[1:]))
+    custom_id = reader.i64()
+    hub_id = reader.u32()
+    gate = reader.i64()
+    delay = reader.i64()
+    menu_visible = reader.bool()
+    clock_speed = reader.u64()
+    dependencies = reader.int_sequence()
+    description = reader.string()
+    sync_state = reader.u8()
+    score = reader.u16()
+    player_data = reader.bytes_u16()
+    hub_description = reader.string()
+    design = reader._take(512) if custom_id != 0 else b""
+    component_count = reader.i64()
+    if not 0 <= component_count <= 10_000_000:
+        raise SaveFormatError(f"invalid version {version} component count {component_count}")
+    components: list[CurrentComponent] = []
+    for index in range(component_count):
+        start = reader.offset
+        try:
+            components.append(_parse_v13_v14_component(reader, version))
+        except SaveFormatError as exc:
+            raise SaveFormatError(
+                f"cannot parse version {version} component {index} at offset {start}: {exc}"
+            ) from exc
+    wire_count = reader.i64()
+    if not 0 <= wire_count <= 100_000_000:
+        raise SaveFormatError(f"invalid version {version} wire count {wire_count}")
+    wires: list[CurrentWire] = []
+    for index in range(wire_count):
+        start = reader.offset
+        try:
+            wires.append(_parse_current_wire(reader))
+        except SaveFormatError as exc:
+            raise SaveFormatError(
+                f"cannot parse version {version} wire {index} at offset {start}: {exc}"
+            ) from exc
+    reader.finish()
+    return CurrentCircuit(
+        custom_id,
+        hub_id,
+        gate,
+        delay,
+        menu_visible,
+        clock_speed,
+        dependencies,
+        description,
+        sync_state,
+        score,
+        player_data,
+        hub_description,
+        design,
+        components,
+        wires,
+    )
+
+
 def convert_v6_bytes(
     data: bytes,
     *,
@@ -1329,6 +1455,51 @@ def convert_direct_enum_bytes(
     return converted, report
 
 
+def convert_intermediate_current_bytes(
+    data: bytes,
+    *,
+    strip_level_interfaces: bool | None = None,
+) -> tuple[bytes, dict[str, object]]:
+    source_version = data[0] if data else None
+    source_circuit = parse_intermediate_current_version(data)
+    if strip_level_interfaces is None:
+        strip_level_interfaces = False
+    circuit, removed_interfaces = _strip_level_interfaces(
+        source_circuit,
+        strip_level_interfaces,
+    )
+    converted = write_v15(circuit)
+    reparsed = parse_v15(converted)
+    removed_interface_kinds = Counter(component.kind for component in removed_interfaces)
+    mapping_quality = {"exact": len(circuit.components)}
+    if removed_interfaces:
+        mapping_quality["campaign_runtime_interface"] = len(removed_interfaces)
+    return converted, {
+        "source_version": source_version,
+        "output_version": CURRENT_VERSION,
+        "source_component_count": len(source_circuit.components),
+        "output_component_count": len(reparsed.components),
+        "runtime_component_count": len(reparsed.components) + len(removed_interfaces),
+        "stripped_level_interface_count": len(removed_interfaces),
+        "stripped_level_interface_kind_counts": dict(sorted(removed_interface_kinds.items())),
+        "source_wire_count": len(source_circuit.wires),
+        "output_wire_count": len(reparsed.wires),
+        "source_kind_counts": dict(
+            sorted(Counter(component.kind for component in source_circuit.components).items())
+        ),
+        "mapping_quality_counts": mapping_quality,
+        "replacements": [],
+        "custom_component_count": sum(
+            1 for item in reparsed.components if item.kind == COM_CUSTOM
+        ),
+        "selected_program_entry_count": sum(
+            len(item.selected_programs) for item in reparsed.components
+        ),
+        "teleport_wire_approximation_count": 0,
+        "verified_v15": True,
+    }
+
+
 def convert_circuit_bytes(
     data: bytes,
     *,
@@ -1346,6 +1517,11 @@ def convert_circuit_bytes(
         )
     if version in DIRECT_ENUM_VERSIONS:
         return convert_direct_enum_bytes(
+            data,
+            strip_level_interfaces=strip_level_interfaces,
+        )
+    if version in INTERMEDIATE_CURRENT_VERSIONS:
+        return convert_intermediate_current_bytes(
             data,
             strip_level_interfaces=strip_level_interfaces,
         )

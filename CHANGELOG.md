@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.3 - 2026-07-27
+
+- Parse v13 and v14 current-enum circuits, including their single-string,
+  immutable, cost, linked-component, selected-program, Custom and wire fields.
+- Read each current campaign base circuit and count the complete immutable
+  runtime scaffold instead of assuming that every level injects only ports.
+- Record optional runtime component and wire counts and accept either prepared
+  or runtime-written structure during postflight verification.
+- Correct derived OVERTURE runtime totals to 47 components for stages 1-3 and
+  49 for stages 4-5 and `binary_programming`.
+- Regenerate the real 0.1059 migration as 98 verified v15 circuits with no
+  retained backup; expand the generated-fixture suite to 33 tests.
+
 ## 0.2.2 - 2026-07-27
 
 - Omit legacy level-input/output components from current campaign overlays so

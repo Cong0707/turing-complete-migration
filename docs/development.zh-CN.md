@@ -14,7 +14,7 @@ Python 3.10+，无第三方运行时依赖。
 ## 模块
 
 - `snappy.py`：raw Snappy 编解码和容器检查。
-- `legacy_v6.py`：v6/v7/v9/v10 解析、旧元件映射、v15 写入和反解析。
+- `legacy_v6.py`：v6/v7/v9/v10/v13/v14 解析、旧元件映射、v15 写入和反解析。
 - `saves.py`：存档代际检查、SQLite 完整性、树哈希和进程门禁。
 - `progress.py`：三代进度读取、关卡别名和当前 `levels.txt` 写入。
 - `migration.py`：准备、转换、marker、验证、安装、回滚和 postflight。
@@ -27,7 +27,7 @@ Python 3.10+，无第三方运行时依赖。
 - `LegacyCircuit/LegacyComponent/LegacyWire`：仅表示 v6 旧枚举和附加字段。
 - `CurrentCircuit/CurrentComponent/CurrentWire`：表示可写入 v15 的统一结构。
 
-v7/v9/v10 已经使用当前主体枚举，直接解析进 `CurrentCircuit`。任何新版本支持都应先
+v7/v9/v10/v13/v14 已经使用当前主体枚举，直接解析进 `CurrentCircuit`。任何新版本支持都应先
 进入统一模型，再由唯一的 `write_v15()` 输出。
 
 旧 `component_factory` 必须在迁移层映射到 `foundry`。`custom_dependency_audit` 应继续

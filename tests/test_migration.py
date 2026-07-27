@@ -13,6 +13,7 @@ from turing_complete_migration.legacy_v6 import (
     COM_LEVEL_OUTPUT_1_PIN,
     CurrentCircuit,
     CurrentComponent,
+    CurrentWire,
     parse_v15,
     write_v15,
 )
@@ -93,6 +94,53 @@ def current_v15_circuit(*, component_count: int = 1) -> bytes:
     )
 
 
+def current_campaign_base(*, component_count: int, wire_count: int = 0) -> bytes:
+    components = [
+        CurrentComponent(
+            kind=COM_LEVEL_INPUT_1_PIN if index == 0 else COM_LEVEL_OUTPUT_1_PIN,
+            position=(index * 10, 0),
+            rotation=0,
+            permanent_id=10_000 + index,
+            user_label=f"base {index}",
+            custom_string="",
+            settings=(),
+            buffer_size=0,
+            ui_order=-2,
+            word_size=1,
+            immutable=True,
+        )
+        for index in range(component_count)
+    ]
+    wires = [
+        CurrentWire(
+            color=index,
+            comment=f"base wire {index}",
+            start=(index, index),
+            segments=((0, 1),),
+        )
+        for index in range(wire_count)
+    ]
+    return write_v15(
+        CurrentCircuit(
+            custom_id=0,
+            hub_id=0,
+            gate=0,
+            delay=0,
+            menu_visible=False,
+            clock_speed=10_000_000,
+            dependencies=[],
+            description="campaign base",
+            sync_state=0,
+            score=0,
+            player_data=b"",
+            hub_description="",
+            design=b"",
+            components=components,
+            wires=wires,
+        )
+    )
+
+
 def legacy_v6_level_circuit(*, save_id: int = 0, campaign_bound: bool = False) -> bytes:
     raw = bytearray()
     raw.extend(struct.pack("<qIqqBIH", save_id, 0, 0, 0, 1, 10_000_000, 0))
@@ -164,11 +212,15 @@ class MigrationTests(unittest.TestCase):
             create_legacy(source)
             create_current(target)
             prepare_migration(source, target, output)
-            receipt = install_prepared(output / "save", target)
-            backup = Path(receipt["backup"])
-            self.assertTrue(backup.is_dir())
-            self.assertTrue((target / ".turing-complete-migration.json").is_file())
-            rollback_backup(backup, target)
+            with patch(
+                "turing_complete_migration.migration.game_is_running",
+                return_value=False,
+            ):
+                receipt = install_prepared(output / "save", target)
+                backup = Path(receipt["backup"])
+                self.assertTrue(backup.is_dir())
+                self.assertTrue((target / ".turing-complete-migration.json").is_file())
+                rollback_backup(backup, target)
             self.assertEqual(
                 (target / "settings.txt").read_text("utf-8"),
                 "current_setting = current-value\n",
@@ -226,8 +278,12 @@ class MigrationTests(unittest.TestCase):
             report = prepare_migration(source, target, output)
             imported = Path(report["schematics"]["imported_units"][0]["destination"])
             (output / "save" / "schematics" / imported / "circuit.data").unlink()
-            with self.assertRaisesRegex(ValueError, "failed verification"):
-                install_prepared(output / "save", target)
+            with patch(
+                "turing_complete_migration.migration.game_is_running",
+                return_value=False,
+            ):
+                with self.assertRaisesRegex(ValueError, "failed verification"):
+                    install_prepared(output / "save", target)
 
     def test_postflight_detects_probable_blank_rewrite(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -520,6 +576,18 @@ class MigrationTests(unittest.TestCase):
                 level = campaign / level_id
                 level.mkdir(parents=True)
                 (level / "meta.txt").write_text("kind = sequential\n", encoding="utf-8")
+                if level_id.startswith("overture_"):
+                    component_count = 11 if level_id in {
+                        "overture_4_program",
+                        "overture_5_conditionals",
+                    } else 9
+                    wire_count = 2 if level_id == "overture_4_program" else 0
+                    (level / "circuit.data").write_bytes(
+                        current_campaign_base(
+                            component_count=component_count,
+                            wire_count=wire_count,
+                        )
+                    )
             maze = campaign / "maze"
             maze.mkdir(parents=True)
             (maze / "meta.txt").write_text("kind = architecture\n", encoding="utf-8")
@@ -557,6 +625,72 @@ class MigrationTests(unittest.TestCase):
             self.assertIn('"maze",true,"OVERTURE"', levels)
             derived_units = report["schematics"]["derived_architecture_units"]
             self.assertEqual(len(derived_units), 5)
+            imported_by_destination = {
+                item["destination"]: item
+                for item in report["schematics"]["imported_units"]
+            }
+            stage_one = imported_by_destination["overture_1_registers/OVERTURE"]
+            self.assertEqual(
+                stage_one["conversion"]["runtime_injected_component_count"],
+                9,
+            )
+            self.assertEqual(stage_one["conversion"]["runtime_component_count"], 10)
+            stage_four = imported_by_destination["overture_4_program/OVERTURE"]
+            self.assertEqual(
+                stage_four["conversion"]["runtime_injected_component_count"],
+                11,
+            )
+            self.assertEqual(
+                stage_four["conversion"]["runtime_campaign_source_version"],
+                15,
+            )
+            self.assertEqual(
+                stage_four["conversion"]["runtime_campaign_component_count"],
+                11,
+            )
+            self.assertEqual(
+                stage_four["conversion"]["runtime_campaign_wire_count"],
+                2,
+            )
+            self.assertEqual(stage_four["conversion"]["runtime_component_count"], 12)
+            self.assertEqual(stage_four["conversion"]["runtime_injected_wire_count"], 2)
+            self.assertEqual(stage_four["conversion"]["runtime_wire_count"], 2)
+
+            stage_four_path = (
+                save
+                / "schematics"
+                / "overture_4_program"
+                / "OVERTURE"
+                / "circuit.data"
+            )
+            stage_four_user = parse_v15(stage_four_path.read_bytes())
+            stage_four_base = parse_v15(
+                (campaign / "overture_4_program" / "circuit.data").read_bytes()
+            )
+            stage_four_path.write_bytes(
+                write_v15(
+                    replace(
+                        stage_four_user,
+                        components=[
+                            *stage_four_user.components,
+                            *stage_four_base.components,
+                        ],
+                        wires=[*stage_four_user.wires, *stage_four_base.wires],
+                    )
+                )
+            )
+            postflight = postflight_check(save)
+            self.assertTrue(postflight["ok"])
+            postflight_by_unit = {
+                item["unit"]: item for item in postflight["imported_circuits"]
+            }
+            stage_four_runtime = postflight_by_unit["overture_4_program/OVERTURE"]
+            self.assertEqual(stage_four_runtime["actual_component_count"], 12)
+            self.assertEqual(stage_four_runtime["actual_wire_count"], 2)
+            self.assertEqual(
+                stage_four_runtime["status"],
+                "rewritten_with_matching_counts",
+            )
             self.assertEqual(
                 report["schematics"]["skipped_architecture_derivations"],
                 [],

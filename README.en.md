@@ -10,7 +10,7 @@ and wire counts.
 
 ## Features
 
-- Reads circuit versions 6, 7, 9, 10 and 15; always produces v15.
+- Reads circuit versions 6, 7, 9, 10, 13, 14 and 15; always produces v15.
 - Preserves component/wire counts, IDs, widths, custom-component references,
   selected programs, linked components and supported settings. Campaign ports
   are intentionally left for the current runtime to inject once.
@@ -35,11 +35,13 @@ can rewrite a complex CPU as a blank circuit.
 
 This project bypasses that path with an explicit v6-to-v15 conversion.
 
-Current campaign levels also merge immutable ports from their bundled
+Current campaign levels also merge immutable scaffolding from their bundled
 `campaign/<level>/circuit.data`. Migrating the legacy copies as well creates
 duplicate inputs/outputs and can make the test compiler fail on a missing
 `Output._is_z`. The tool omits those legacy ports only in campaign overlays,
 keeps their wires, and retains the ports in standalone sandbox architectures.
+It parses the bundled v13/v14 circuits to account for the complete runtime
+scaffold instead of assuming that every level injects only two ports.
 
 ## Install
 
@@ -86,10 +88,12 @@ recovery options and should only be used deliberately.
   converted with per-file counts preserved.
 - A real RV64 design remained 23 components and 190 wires, including 16 Custom
   instances.
+- OVERTURE stages 1-3 contain 38 user components plus 9 immutable scaffold
+  components at runtime; stages 4-5 and `binary_programming` contain 38 plus 11.
 - 34 foundry definitions cover all 33 referenced Custom IDs and 189 reported
   instances after OVERTURE derivation,
   with no missing or duplicate definitions.
-- The repository has 32 generated-fixture tests and contains no real save data.
+- The repository has 33 generated-fixture tests and contains no real save data.
 
 ## Limitations
 

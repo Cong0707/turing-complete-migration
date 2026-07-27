@@ -11,7 +11,13 @@ import os
 import shutil
 import uuid
 
-from .legacy_v6 import COM_CUSTOM, SaveFormatError, convert_circuit_bytes, parse_v15
+from .legacy_v6 import (
+    COM_CUSTOM,
+    CURRENT_LEVEL_INTERFACE_KINDS,
+    SaveFormatError,
+    convert_circuit_bytes,
+    parse_v15,
+)
 from .progress import (
     LEVEL_ALIASES,
     campaign_level_kinds,
@@ -127,7 +133,45 @@ def _is_runtime_level_unit(
         campaign_kinds is not None
         and level_id in campaign_kinds
         and campaign_kinds[level_id] != "architecture"
+        and level_id not in {"foundry", "main", "sandbox"}
     )
+
+
+def _add_runtime_campaign_counts(
+    conversion: dict[str, object],
+    level_id: str,
+    campaign_root: Path | None,
+) -> None:
+    if campaign_root is None:
+        return
+    base_circuit_path = campaign_root / level_id / "circuit.data"
+    if not base_circuit_path.is_file():
+        return
+    try:
+        converted, base_conversion = convert_circuit_bytes(
+            base_circuit_path.read_bytes(),
+            strip_level_interfaces=False,
+        )
+        base_circuit = parse_v15(converted)
+    except SaveFormatError:
+        return
+    injected_components = sum(
+        component.immutable or component.kind in CURRENT_LEVEL_INTERFACE_KINDS
+        for component in base_circuit.components
+    )
+    output_components = conversion.get("output_component_count")
+    output_wires = conversion.get("output_wire_count")
+    conversion["runtime_campaign_source_version"] = base_conversion.get(
+        "source_version"
+    )
+    conversion["runtime_campaign_component_count"] = len(base_circuit.components)
+    conversion["runtime_campaign_wire_count"] = len(base_circuit.wires)
+    if isinstance(output_components, int):
+        conversion["runtime_injected_component_count"] = injected_components
+        conversion["runtime_component_count"] = output_components + injected_components
+    if isinstance(output_wires, int):
+        conversion["runtime_injected_wire_count"] = len(base_circuit.wires)
+        conversion["runtime_wire_count"] = output_wires + len(base_circuit.wires)
 
 
 OVERTURE_STAGE_LEVELS = (
@@ -147,6 +191,7 @@ def _merge_schematics(
     preserve_original: bool,
     include_circuit_backups: bool,
     campaign_kinds: dict[str, str] | None,
+    campaign_root: Path | None,
 ) -> dict[str, object]:
     source = source_root / "schematics"
     destination = prepared_root / "schematics"
@@ -200,6 +245,12 @@ def _merge_schematics(
             raise SaveFormatError(
                 f"cannot convert {source_circuit}: {exc}"
             ) from exc
+        if strip_level_interfaces:
+            _add_runtime_campaign_counts(
+                conversion,
+                relative.parts[0],
+                campaign_root,
+            )
         destination_circuit.write_bytes(converted)
         converted_info = inspect_circuit(
             destination_circuit,
@@ -323,6 +374,7 @@ def _merge_schematics(
             raise SaveFormatError(
                 f"cannot derive {level_id}/{selected} from {source_circuit}: {exc}"
             ) from exc
+        _add_runtime_campaign_counts(conversion, level_id, campaign_root)
         destination_circuit.write_bytes(converted)
         converted_info = inspect_circuit(
             destination_circuit,
@@ -495,6 +547,7 @@ def prepare_migration(
         preserve_original=preserve_original,
         include_circuit_backups=include_circuit_backups,
         campaign_kinds=campaign_kinds,
+        campaign_root=(resolved_game_dir / "campaign") if resolved_game_dir else None,
     )
     custom_audit = schematic_result["custom_dependency_audit"]
     if custom_audit["missing_definitions"]:
@@ -654,6 +707,11 @@ def verify_save(save_root: Path) -> dict[str, object]:
                             if isinstance(conversion, dict)
                             else None
                         )
+                        expected_runtime_wires = (
+                            conversion.get("runtime_wire_count")
+                            if isinstance(conversion, dict)
+                            else None
+                        )
                         circuit_record["actual_component_count"] = actual_components
                         circuit_record["actual_wire_count"] = actual_wires
                         circuit_record["expected_component_count"] = expected_components
@@ -661,9 +719,17 @@ def verify_save(save_root: Path) -> dict[str, object]:
                             expected_runtime_components
                         )
                         circuit_record["expected_wire_count"] = expected_wires
+                        circuit_record["expected_runtime_wire_count"] = (
+                            expected_runtime_wires
+                        )
                         allowed_component_counts = {
                             count
                             for count in (expected_components, expected_runtime_components)
+                            if isinstance(count, int)
+                        }
+                        allowed_wire_counts = {
+                            count
+                            for count in (expected_wires, expected_runtime_wires)
                             if isinstance(count, int)
                         }
                         counts_match = (
@@ -671,7 +737,10 @@ def verify_save(save_root: Path) -> dict[str, object]:
                                 not allowed_component_counts
                                 or actual_components in allowed_component_counts
                             )
-                            and (not isinstance(expected_wires, int) or actual_wires == expected_wires)
+                            and (
+                                not allowed_wire_counts
+                                or actual_wires in allowed_wire_counts
+                            )
                         )
                         expected_hash = (
                             converted_metadata.get("sha256")

@@ -1,6 +1,6 @@
 # 存档与电路格式笔记
 
-本文记录工具实际实现的 v6、v7、v9、v10、v15 电路格式。结论优先来自真实运行数据，
+本文记录工具实际实现的 v6、v7、v9、v10、v13、v14、v15 电路格式。结论优先来自真实运行数据，
 并与 `Stuffe/save_monger` 的公开历史实现交叉验证。
 
 ## 根目录
@@ -117,6 +117,22 @@ add_custom_prototype
 旧 `component_factory` 目录映射到 `foundry`；若仍留在旧目录，定义根本不会进入上述
 加载链，引用实例会在方案保存时被删除。
 
+## v13、v14
+
+这两版已经采用 v15 的头部布局、固定 512 字节 Custom design 和 `u16` 导线路径，但元件
+字段仍有代际差异：
+
+- v13/v14 在永久 ID 后只存一个字符串。对于 Constant、Halt、Static Eval、Static
+  Indexer，它对应 v15 `custom_string`；其它元件对应 `user_label`。
+- 两版都有 settings、buffer size、UI order、word size、immutable、endianness、init data、
+  五字段 linked components、字符串键 selected programs 和 Custom 专属字段。
+- v13 尚未保存 gate/delay cost；转换时使用 v15 默认值 `-1`、`0`。
+- v14 在 immutable 后增加 `i64 cost_gate` 和 `i64 cost_delay`。
+
+工具用生成式 v13/v14 fixture 验证上述字段，并只读批量解析 2.1.278 顶层 campaign：
+94 个 v7/v13/v14/v15 基础电路成功，唯一未纳入 parser 的 `symphony` v12 与本次 0.1059
+迁移方案没有交集。
+
 ## v15 结构
 
 v15 头部移除了 camera/campaign-bound，clock speed 为 `u64`。当 circuit custom ID
@@ -137,17 +153,23 @@ v15 导线不再保存旧 wire kind，路径段改为 `u16`：高 3 位方向、
 工具写出 v15 后立即完整反解析，并核对元件数和导线数。容器可解压但字段尾随、截断、
 计数错位或路径段非法都不会通过验证。
 
-### 2.1.278 剧情端口注入
+### 2.1.278 剧情脚手架注入
 
-当前剧情关卡会把游戏目录 `campaign/<level>/circuit.data` 中的 immutable level input/output
-与用户方案合并，并在保存时把合并结果写回。0.1059 用户方案本身也包含同一组旧端口，
+当前剧情关卡会把游戏目录 `campaign/<level>/circuit.data` 中的 immutable 元件
+与用户方案合并，并可能在保存时把合并结果写回。0.1059 用户方案本身也包含同一组旧端口，
 直接转换会得到重叠的两组端口。`not_gate` 的实测变化为 3 个旧元件加载后变成 5 个：
 NAND 不变，输入和输出各重复一次；随后测试编译器报 `Output does not have property _is_z`。
 
-迁移器在明确属于当前 combinational/sequential campaign 的方案中省略 level interface
-元件，但完整保留连接导线。报告分别记录 `output_component_count`（启动前）和
-`runtime_component_count`（游戏补回端口后）。独立 `schematics/architecture/` 不参与
-campaign 合并，因此必须保留自己的架构输入输出。
+迁移器在明确属于当前非 architecture campaign 的用户方案中省略旧 level interface，
+但完整保留用户导线；然后解析当前关卡的基础电路，按 immutable 元件计算运行时数量。
+报告分别记录 `output_component_count`（启动前）、`runtime_injected_component_count` 和
+`runtime_component_count`。验证同时接受用户导线数，以及运行时写回基础导线时的
+`runtime_wire_count`。独立 `schematics/architecture/` 不参与 campaign 合并，因此必须
+保留自己的架构输入输出。
+
+OVERTURE 基础文件证明“只补端口”并不成立：阶段 1～3 各含 9 个 immutable 元件，阶段
+4～5 和 `binary_programming` 各含 11 个。38 个用户元件的派生方案因此分别预期 47 或
+49 个运行时元件，而不是统一的 40 个。
 
 ## 无法原样表示的字段
 
@@ -171,7 +193,7 @@ v6 的 Program 选择表以数字关卡 ID 为键，v15 使用字符串。工具
 ## 真实数据验证
 
 - 0.1059：92 个源主电路全为 v6；另派生 6 个 OVERTURE 剧情方案，正式目标为 98 个
-  v15。150 个剧情边界端口改由运行时注入，所有导线保留。
+  v15。150 个旧剧情边界端口不写入用户方案，运行时脚手架数按当前 campaign 逐关卡计算。
 - 2.0.16：v6=90、v7=31、v9=2、v10=108；2125 个元件、5941 条导线，逐文件计数一致。
 - 0.1059 RV64：23 个元件、190 条导线、16 个 Custom；转换后保持。
 - 原生 2.1.276 测试电路：22 个元件、37 条导线，可由本项目 v15 parser 完整读取。

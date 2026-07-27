@@ -6,11 +6,12 @@
 python -m unittest discover -s tests -v
 ```
 
-当前 32 项测试覆盖：
+当前 33 项测试覆盖：
 
 - raw Snappy literal/COPY 解码、literal 编码往返和异常大小拒绝。
 - 合法 v6 Custom、Program、路径段解析及 v15 转换。
 - 合法 v7、v9、v10 直接枚举格式转换。
+- 合法 v13/v14 单字符串、cost、immutable、linked/program、Custom 和 `u16` 导线路径。
 - v9 disconnected/teleport wire 的占位降级与报告计数。
 - v15 写入、反解析和元件/导线计数。
 - 0.x SQLite、2.0.x 六列进度、2.1.x 四列进度和关卡别名。
@@ -18,7 +19,8 @@ python -m unittest discover -s tests -v
 - 目标不存在时的准备与安装。
 - 关闭归档、旧电路原件、历史电路和安装备份后无残留。
 - `component_factory -> foundry` 目录映射和 Custom ID 定义闭包。
-- 剧情端口省略、独立架构端口保留、运行时端口双计数和 OVERTURE 分阶段派生。
+- 剧情端口省略、独立架构端口保留、完整 immutable 脚手架及基础导线双计数、OVERTURE
+  分阶段派生。
 - marker 对方案删除、当前电路缺失、数量变化和原件篡改的检测。
 - 默认安装、回滚、Steam Auto-Cloud 门禁、显式云关闭确认和路径隔离。
 
@@ -32,7 +34,7 @@ python -m unittest discover -s tests -v
 - 输入版本：v6=92。
 - 源总计：1484 个元件、5330 条导线。
 - 输出：92 个源方案加 6 个 OVERTURE 派生方案，共 98 个 v15。
-- 150 个剧情边界端口不写入候选，由 2.1.278 注入；所有导线保留。
+- 150 个旧剧情边界端口不写入候选；当前 immutable 脚手架按实际 campaign 文件逐关卡计数。
 - 映射质量：1403 exact、81 approximate。
 - 旧存档实际使用的 90 种元件 kind 均有映射。
 - RV64：23 个元件、190 条导线、16 个 Custom，转换后保持。
@@ -61,7 +63,12 @@ python -m unittest discover -s tests -v
 - `verify` 为 `ok: true`，98 个状态均为 `unchanged_v15`。
 - `not_gate` 候选为 1 个 NAND、5 条导线，运行时预期补回 2 个端口。
 - 独立 OVERTURE/LEG/RV64 分别为 40/149、149/1446、23/190（元件/导线）。
-- `overture_4_program/OVERTURE` 为 38 个用户元件、149 条导线，运行时预期 40 个元件。
+- `overture_1_registers`～`overture_3_immediates` 的 OVERTURE 为 38 个用户元件、149 条
+  导线，运行时注入 9 个 immutable 元件，预期 47 个。
+- `overture_4_program`、`overture_5_conditionals`、`binary_programming` 的 OVERTURE
+  同为 38/149，运行时注入 11 个 immutable 元件，预期 49 个。
+- `introduction` 与 `nand_gate` 的基础电路分别含 1、3 条导线；postflight 同时接受纯用户
+  导线数和运行时写回完整基础导线后的计数。
 - 无 `archive/`、`_tcm_original_circuit.data`、`circuit_backup_*.data`、旧 `settings.txt`。
 - 无备份安装后没有 `.tcm-backup-*`、`.tcm-replaced-*` 或 `.tcm-install-*` 残留。
 

@@ -7,7 +7,7 @@
 
 ## 当前能力
 
-- 输入电路版本：v6、v7、v9、v10、v15。
+- 输入电路版本：v6、v7、v9、v10、v13、v14、v15。
 - 输出电路版本：统一为 v15。
 - 保留用户元件、全部导线、位置、旋转、永久 ID、位宽、Custom ID、Program 选择、
   linked components 及已识别设置；剧情边界端口由新版运行时注入，不重复写入用户方案。
@@ -31,10 +31,11 @@
 
 本工具绕过这条损坏路径：旧枚举解析 → 显式元件映射 → v15 写入 → v15 反解析验证。
 
-2.1.278 的剧情关卡还会把自带 `campaign/<level>/circuit.data` 中的不可编辑输入输出
+2.1.278 的剧情关卡还会把自带 `campaign/<level>/circuit.data` 中的 immutable 脚手架
 合并进用户方案。若旧端口也被迁入，画面会出现两套端口，测试编译器可能绑定到错误的
 `Output` 并报 `_is_z` 缺失。工具因此只在剧情副本中省略旧边界端口，保留连接导线；
-独立 `architecture/` 方案仍保留自己的端口。
+独立 `architecture/` 方案仍保留自己的端口。报告从实际 v13/v14 campaign 电路计算
+完整运行时脚手架数量，不再假定运行时只补两个端口。
 
 ## 安装
 
@@ -115,9 +116,11 @@ tcmigrate rollback "%APPDATA%\Turing Complete.tcm-backup-..." "%APPDATA%\Turing 
 - 2.0.16：231/231 个主电路转换成功，版本分布为 v6=90、v7=31、v9=2、v10=108；
   共 2125 个元件、5941 条导线，逐文件计数一致。
 - 真实 0.1059 RV64：23 个元件、190 条导线，其中 16 个 Custom；写成 v15 后计数保持。
+- 派生 OVERTURE：阶段 1～3 为 38 个用户元件加 9 个 immutable 脚手架，运行时 47 个；
+  阶段 4～5 与 `binary_programming` 加 11 个，运行时 49 个。
 - 自定义元件：34 个 foundry 定义覆盖全部 33 个被引用 ID；派生 OVERTURE 后报告中共有
   189 个 Custom 引用实例，缺失/重复 ID 为 0。
-- 自动化测试：32 项，测试数据均由代码生成，不含用户存档。
+- 自动化测试：33 项，测试数据均由代码生成，不含用户存档。
 
 ## 不可自动消除的差异
 
@@ -151,7 +154,7 @@ migration-output-.../
 
 ## 文档
 
-- `docs/format-notes.zh-CN.md`：v6/v7/v9/v10/v15 字段与根因。
+- `docs/format-notes.zh-CN.md`：v6/v7/v9/v10/v13/v14/v15 字段与根因。
 - `docs/migration-strategy.zh-CN.md`：迁移、碰撞、进度与降级策略。
 - `docs/report-format.zh-CN.md`：tool format 2 报告和 marker。
 - `docs/testing.zh-CN.md`：自动化及真实存档验证结果。
