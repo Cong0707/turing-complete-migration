@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "turing-complete-migration"
+version = "0.2.1"
+description = "Direct v6/v7/v9/v10 to v15 migration toolkit for legacy Turing Complete saves"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+  { name = "Turing Complete Migration contributors" }
+]
+keywords = ["turing-complete", "save", "migration", "godot"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Games/Entertainment",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/Cong0707/turing-complete-migration"
+Documentation = "https://github.com/Cong0707/turing-complete-migration/tree/main/docs"
+Issues = "https://github.com/Cong0707/turing-complete-migration/issues"
+
+[project.scripts]
+tcmigrate = "turing_complete_migration.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

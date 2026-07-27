@@ -1,0 +1,55 @@
+# Changelog
+
+## 0.2.1 - 2026-07-27
+
+- Map legacy `schematics/component_factory/` definitions to the current
+  `schematics/foundry/` directory used by the 2.1.x runtime.
+- Audit the Custom dependency closure: every referenced Custom ID must have one
+  unique foundry definition before preparation can succeed.
+- Record foundry definition counts, reference counts, missing/duplicate IDs and
+  zero-design definitions in the migration report.
+- Document that the current runtime reloads foundry prototypes and rebuilds the
+  512-byte design from component layout via `update_custom_design`.
+- Add `--steam-cloud-disabled` so a user can explicitly confirm that Steam Cloud
+  is disabled while Steam itself remains running.
+- Add regression tests for foundry mapping, Custom closure and the explicit
+  Steam Cloud confirmation path; the suite now contains 26 tests.
+
+## 0.2.0 - 2026-07-27
+
+- Parse the actual legacy v6 component enum instead of handing v6 bytes to the
+  current game's incompatible loader.
+- Convert v6, v7, v9 and v10 circuits directly to complete v15 containers.
+- Preserve component and wire counts, custom IDs, program selections, linked
+  components and supported per-component settings.
+- Add an independent raw-Snappy literal encoder; no third-party dependency is
+  required.
+- Validate every imported circuit by fully parsing v15 and comparing component
+  and wire counts against the conversion report.
+- Support preparing and installing when the current save directory does not yet
+  exist.
+- Add `--no-archive`, `--no-preserve-original`, `--no-circuit-backups` and
+  `--no-backup` for users who explicitly do not want retained copies.
+- Report unavoidable semantic approximations, including legacy components with
+  no exact current equivalent and disconnected/teleport wire placeholders.
+- Validate all 92 main circuits from a real 0.1059 save and all 231 main
+  circuits from a mixed v6/v7/v9/v10 2.0.16 save without count loss.
+- Expand the automated suite to 24 tests with generated valid binary fixtures.
+
+## 0.1.0 - 2026-07-27
+
+- Detect 0.x, 2.0.x and 2.1+ save-root layouts.
+- Inspect SQLite integrity and versioned Snappy schematic containers.
+- Prepare a migration without modifying source or target directories.
+- Preserve conflicting schematics under collision-safe names.
+- Keep an immutable `_tcm_original_circuit.data` beside every imported circuit.
+- Convert compatible legacy completion rows to current `levels.txt` syntax.
+- Preserve current settings and never merge source token values.
+- Install with an automatic timestamped backup and support rollback.
+- Detect probable game-side blank-circuit rewrites after the first load.
+- Distinguish the alpha six-column and current four-column `levels.txt` formats.
+- Reject nested source/target/output trees, links, junctions and invalid game paths.
+- Persist imported-unit hashes in the installed marker so deleted or tampered
+  preservation files are detected.
+- Verify prepared saves before installation and clean failed rollback temporaries.
+- Refuse install/rollback while Steam is running against an Auto-Cloud save.

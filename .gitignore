@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+
+# Never commit real game saves, tokens, or locally prepared migrations.
+snapshots/
+migration-output-*/
+real-tests/
+*.tcm-backup-*/
+*.tcm-pre-rollback-*/
+settings.txt
+steam_autocloud.vdf
+progress.dat
+_progress.dat

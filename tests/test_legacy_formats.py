@@ -1,0 +1,104 @@
+import struct
+import unittest
+
+from turing_complete_migration.legacy_v6 import (
+    COM_CUSTOM,
+    COM_RAM,
+    convert_circuit_bytes,
+    parse_v15,
+)
+from turing_complete_migration.snappy import compress_raw
+
+
+def string(value: str) -> bytes:
+    data = value.encode("utf-8")
+    return struct.pack("<H", len(data)) + data
+
+
+def build_v6_custom_program() -> bytes:
+    raw = bytearray()
+    raw.extend(struct.pack("<qIqqBIH", 0, 7, 12, 34, 1, 10_000_000, 0))
+    raw.extend(string("rv64-like"))
+    raw.extend(struct.pack("<hhBBH", 0, 0, 2, 0, 9))
+    raw.extend(struct.pack("<H", 0))
+    raw.extend(string("hub"))
+    raw.extend(struct.pack("<q", 2))
+
+    raw.extend(struct.pack("<HhhBq", 92, 10, 20, 1, 100))
+    raw.extend(string("rv-unit"))
+    raw.extend(struct.pack("<QQhqhh", 0, 0, 0, 1234, 2, -3))
+
+    raw.extend(struct.pack("<HhhBq", 94, 40, 50, 0, 101))
+    raw.extend(string("program"))
+    raw.extend(struct.pack("<QQhHq", 512, 0, 1, 1, 86))
+    raw.extend(string("new_program"))
+
+    raw.extend(struct.pack("<qBB", 1, 0, 3))
+    raw.extend(string("data"))
+    raw.extend(struct.pack("<hhBB", 0, 0, 5, 0))
+    return bytes([6]) + compress_raw(bytes(raw))
+
+
+def build_direct_enum(version: int, *, teleport: bool = False) -> bytes:
+    raw = bytearray()
+    raw.extend(struct.pack("<qIqqBQH", 0, 0, 1, 2, 1, 10_000_000, 0))
+    raw.extend(string(f"version {version}"))
+    raw.extend(struct.pack("<hhBH", 0, 0, 0, 0))
+    raw.extend(struct.pack("<H", 0))
+    raw.extend(string(""))
+    raw.extend(struct.pack("<q", 1))
+    raw.extend(struct.pack("<HhhBq", 2, 4, 5, 0, 99))
+    raw.extend(string("on"))
+    raw.extend(struct.pack("<Hq h q", 0, 0, 0, 1))
+    if version == 7:
+        raw.extend(struct.pack("<q", -1))
+    else:
+        raw.extend(struct.pack("<HH", 0, 0))
+    raw.extend(struct.pack("<qB", 1, 4))
+    raw.extend(string("wire"))
+    raw.extend(struct.pack("<hh", 1, 2))
+    if teleport:
+        raw.extend(struct.pack("<Bhh", 0x20, 30, 40))
+    else:
+        raw.extend(struct.pack("<BB", (2 << 5) | 7, 0))
+    return bytes([version]) + compress_raw(bytes(raw))
+
+
+class LegacyFormatTests(unittest.TestCase):
+    def test_v6_custom_program_and_wire_convert_to_v15(self):
+        converted, report = convert_circuit_bytes(build_v6_custom_program())
+        parsed = parse_v15(converted)
+
+        self.assertEqual(converted[0], 15)
+        self.assertEqual(len(parsed.components), 2)
+        self.assertEqual(len(parsed.wires), 1)
+        custom = next(item for item in parsed.components if item.kind == COM_CUSTOM)
+        program = next(item for item in parsed.components if item.kind == COM_RAM)
+        self.assertEqual(custom.position, (27, 32))
+        self.assertEqual(custom.custom_id, 1234)
+        self.assertEqual(program.selected_programs, (("86", "new_program"),))
+        self.assertEqual(parsed.wires[0].segments, ((0, 5),))
+        self.assertEqual(report["source_component_count"], 2)
+        self.assertEqual(report["output_component_count"], 2)
+
+    def test_direct_enum_versions_convert_to_v15(self):
+        for version in (7, 9, 10):
+            with self.subTest(version=version):
+                converted, report = convert_circuit_bytes(
+                    build_direct_enum(version, teleport=version == 9)
+                )
+                parsed = parse_v15(converted)
+                self.assertEqual(len(parsed.components), 1)
+                self.assertEqual(len(parsed.wires), 1)
+                self.assertEqual(report["source_version"], version)
+                self.assertEqual(report["output_version"], 15)
+                self.assertEqual(
+                    report["teleport_wire_approximation_count"],
+                    1 if version == 9 else 0,
+                )
+                if version == 9:
+                    self.assertEqual(parsed.wires[0].segments, ((0, 1),))
+
+
+if __name__ == "__main__":
+    unittest.main()
