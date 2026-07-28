@@ -2,12 +2,12 @@
 
 ## Unreleased
 
-- Add a freestanding C to directly enterable RV64I mnemonic `.asm` toolchain
-  with startup code, a code-only linker layout, opcode/funct validation,
-  PC-relative label reconstruction and reproducible ELF/bin/objdump/map
-  artifacts.
-- Reject `.rodata`, `.data` and `.bss` instead of silently producing an invalid
-  image for the user's separate instruction/data memory architecture.
+- Add a compatibility-first C/C++ to RV64I mnemonic `.asm` flow that preserves
+  the user's original `run.sh` GCC command, `.cpp` input, `_start.S`, `-O0`,
+  `-Ttext=0`, `sp=2047` and `x1=128` behavior.
+- Replace only the old four-byte `encode.py` output stage with linked-ELF
+  instruction decoding and PC-relative label reconstruction; do not impose a
+  new linker script or data-section policy.
 - Add 14 regression tests for the compiler wrapper without requiring a local
   RISC-V toolchain, plus a 65-instruction/260-byte `spec.isa` round trip.
 - Add a standalone little-endian RV64I `spec.isa` covering the 12 opcode groups

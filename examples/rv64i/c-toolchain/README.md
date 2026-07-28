@@ -1,105 +1,81 @@
-# C → Turing Complete RV64I ASM 编译流程
+# 与原流程兼容的 C/C++ → RV64I ASM
 
-这套文件只生成程序，不修改 Turing Complete 存档，也不会自动安装交叉编译器。
-
-## 依赖
-
-Ubuntu/Debian 上需要能执行：
+本目录以用户已有文件为基线，只替换最后的输出格式：
 
 ```text
-riscv64-unknown-elf-gcc
-riscv64-unknown-elf-objcopy
-riscv64-unknown-elf-objdump
-python3
+test.cpp
+  -> 原 riscv64-unknown-elf-gcc 命令
+  -> temp.elf
+  -> riscv64-unknown-elf-objdump -d
+  -> compile.py
+  -> 最新版可直接输入的 test.asm
 ```
 
-Ubuntu 中常见的软件包安装方式是：
+## 直接替换
 
-```bash
-sudo apt install gcc-riscv64-unknown-elf binutils-riscv64-unknown-elf python3
+把以下文件复制到原来的 `~/congProjects/riscv/`：
+
+```text
+run.sh
+build.sh
+compile.py
+_start.S
 ```
 
-Python 脚本只使用标准库，没有额外的 `pip` 依赖。
+原来的 `a.cpp`、`b.cpp`、`btc.cpp`、`sha256.cpp` 和 `encode.py` 不需要改。
 
-## 一条命令
+## 使用
 
 ```bash
-./build.sh example.c -o example.asm
+chmod +x run.sh build.sh
+./run.sh a.cpp
 ```
 
-如果脚本没有可执行权限：
+或：
 
 ```bash
-sh build.sh example.c -o example.asm
-```
-
-也可以直接调用 Python：
-
-```bash
-python3 compile_c.py example.c -o example.asm
+./build.sh a.cpp
 ```
 
 输出：
 
 ```text
-example.asm
-example-build/example.elf
-example-build/example.text.bin
-example-build/example.objdump.txt
-example-build/example.map
+a.asm
 ```
 
-`example.asm` 使用最新版可以直接输入的真实 RV64I 汇编：
+其中是可直接输入游戏的真实 RV64I 汇编：
 
-```text
+```asm
 start:
-    lui x2, 0x0
-    addi x2, x2, 2032
+    addi x2, x0, 2047
+    addi x1, x0, 128
     jal x1, loc_00000010
 ```
 
-脚本从最终链接后的机器码重建助记符和 PC-relative 标签，因此 `branch`/`jal` 的位置已经
-固定，同时输出仍是可读、可直接粘贴的 ASM，不包含 `U32` 原始数据语句。
+## 保留的原行为
 
-## 可调参数
+- 输入仍是一个 `.cpp` 文件；
+- 工具链仍是 `riscv64-unknown-elf-gcc`；
+- 保留 `-march=rv64i -mabi=lp64`；
+- 保留 `-ffreestanding -nostdlib -lgcc -O0`；
+- 保留 `-fomit-frame-pointer` 和 `-Wl,-Ttext=0`；
+- 保留 `_start.S` 的 `sp = 2047`；
+- 保留 `_start.S` 的 `x1 = 128`；
+- 编译后仍打印完整 objdump；
+- 临时文件仍使用 `temp.elf`，结束时删除。
 
-```bash
-python3 compile_c.py program.c \
-  -o program.asm \
-  --stack-top 2032 \
-  --max-code-bytes 131072 \
-  -O 2
-```
+## 唯一实质变化
 
-脚本默认依次查找 `riscv64-unknown-elf-` 和 `riscv-none-elf-`。也可以明确指定
-其他工具链前缀：
+旧 `encode.py` 把每条指令打印成四个小端二进制字节。最新版直接输入 ASM，所以
+`compile.py` 读取同一个 ELF 的 objdump 机器码，将其反解为 `spec.isa` 已定义的助记符，
+并为 branch/jal 重建标签。
 
-```bash
-python3 compile_c.py program.c -o program.asm --prefix riscv-none-elf-
-```
+`compile.py` 不重新编译、不改变 GCC 参数，也不改变 `_start.S`。
 
-## 第一版限制
+## 数据说明
 
-这是一条针对当前 RV64 Harvard 架构的“代码区直出”流程：
+此流程与旧 `encode.py` 一样只处理 `objdump -d` 中的可执行指令，不额外导出 `.data`、
+`.rodata` 或 `.bss`。如果原程序依赖初始化全局数组，是否能正确工作仍取决于你原有的
+数据 RAM 写入方式；本次不擅自改变该行为。
 
-- 支持 freestanding C 和 `libgcc` 中仍能用 RV64I 实现的辅助函数。
-- 不支持 libc、操作系统调用或标准启动文件。
-- 不支持全局/静态数据、字符串、只读表和 BSS。
-- 链接器发现 `.rodata`、`.data` 或 `.bss` 非空会直接失败。
-- 默认关闭 jump table 和 switch table，尽量让 `switch` 保持为代码分支。
-- Python 会逐条验证机器码，只允许 `spec.isa` 中的 12 个 opcode 组和对应 funct。
-- `MISC-MEM/FENCE`、CSR、M/A/F/D/C/V 扩展会被拒绝。
-- 初始栈顶必须 16 字节对齐。
-
-局部自动变量和局部 `volatile` 变量可以放在栈上。需要全局数据时，必须先确定最新版
-中独立数据 RAM 的装载方式，再扩展为代码镜像和数据镜像双输出。
-
-## 导入游戏
-
-把 `example.asm` 的文本直接复制到使用同目录 `spec.isa` 的 RV64 架构程序编辑器中。
-其中只包含 RV64I 助记符、寄存器、立即数、标签和 `;` 注释。
-
-## 返回值和结束行为
-
-`start.S` 调用 `main`。`main` 返回以后，CPU 会停在一个无限跳转中；返回值仍保留在
-ABI 返回寄存器 `a0`。没有操作系统，因此 `return` 不会退出进程，也没有标准输出。
+Python 只使用标准库，没有 `pip` 依赖。

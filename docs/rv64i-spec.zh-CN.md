@@ -123,12 +123,13 @@ line_comments = [";", "//", "#"]
 examples/rv64i/c-toolchain/
 ```
 
-新流程仍由 GCC 完成汇编、链接和重定位，然后将最终 `.text` 反解为当前汇编器支持的
-真实 RV64I 助记符，并为 PC-relative branch/jal 重建本地标签。Python 会逐条验证机器码
-只使用本规格覆盖的编码。完整说明见 `docs/rv64i-c-toolchain.zh-CN.md`。
+新流程保留用户原 `run.sh` 的 `.cpp` 输入、GCC 参数和 `_start.S`。GCC 完成链接后，
+`compile.py` 将最终 objdump 机器码反解为当前汇编器支持的真实 RV64I 助记符，并为
+PC-relative branch/jal 重建本地标签。完整说明见
+`docs/rv64i-c-toolchain.zh-CN.md`。
 
-当前流程故意拒绝 `.rodata/.data/.bss`。用户 RV64 的指令 RAM 与数据 RAM 分离，在没有
-明确的数据 RAM 装载协议前，把数据段附加到代码末尾会得到错误程序。
+与用户旧 `encode.py` 一样，当前流程只处理 `objdump -d` 的可执行指令，不额外导出数据
+RAM 镜像，也不擅自拒绝或重排 `.rodata/.data/.bss`。
 
 ## 使用
 

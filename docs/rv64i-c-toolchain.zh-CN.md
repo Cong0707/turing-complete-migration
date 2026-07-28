@@ -1,224 +1,262 @@
-# 从 C 生成可直接输入的 RV64I `.asm`
+# 与原流程兼容的 C/C++ → RV64I ASM
 
 ## 目标
 
-`examples/rv64i/c-toolchain/` 提供以下单向流程：
+本工具不重新设计用户的编译环境，而是严格沿用用户已有流程：
 
 ```text
-freestanding C
-  -> GCC RV64I/LP64 编译和静态链接
-  -> 地址 0 开始的 ELF .text
-  -> little-endian 原始机器码
-  -> 指令白名单验证
-  -> 反解为 RV64I 助记符并重建 branch/jal 标签
-  -> Turing Complete 可直接输入的 .asm
+test.cpp
+  -> riscv64-unknown-elf-gcc（用户原参数）
+  -> temp.elf
+  -> riscv64-unknown-elf-objdump -d
+  -> compile.py
+  -> 最新版 Turing Complete 可直接输入的 test.asm
 ```
 
-它只生成文件，不读取或修改 Turing Complete 存档。
+旧版最后由 `encode.py` 输出四个小端二进制字节；新版最后由 `compile.py` 输出真实 RV64I
+助记符和标签。编译、链接和启动代码保持不变。
+
+工具只生成文件，不读取或修改游戏存档。
 
 ## 文件
 
-| 文件 | 用途 |
-| --- | --- |
-| `compile_c.py` | 调用交叉工具链、验证机器码并生成真实助记符 `.asm` |
-| `build.sh` | Linux/macOS shell 入口 |
-| `start.S` | 设置栈顶、调用 `main`、返回后原地循环 |
-| `tc-rv64-code-only.ld` | 将 `.text` 链接到地址 0，并拒绝数据段 |
-| `example.c` | 不依赖全局数据的最小 C 示例 |
-
-Python 部分只使用标准库，不需要安装任何 `pip` 包。
-
-## 依赖
-
-需要 GNU RISC-V bare-metal 工具链中的：
-
 ```text
-riscv64-unknown-elf-gcc
-riscv64-unknown-elf-objcopy
-riscv64-unknown-elf-objdump
+examples/rv64i/c-toolchain/
+  run.sh
+  build.sh
+  compile.py
+  _start.S
+  README.md
 ```
 
-Ubuntu/Debian 常见安装命令：
+其中：
+
+- `run.sh`：用户原流程的最新版 ASM 输出版本；
+- `build.sh`：兼容入口，直接调用 `run.sh`；
+- `compile.py`：读取已链接 ELF 的 objdump，生成可直接输入的 ASM；
+- `_start.S`：按用户原文件保留；
+- `README.md`：最短使用说明。
+
+Python 只使用标准库，没有 `pip` 依赖。
+
+## 与用户原 `run.sh` 的对应关系
+
+保留的 GCC 命令为：
 
 ```bash
-sudo apt install gcc-riscv64-unknown-elf binutils-riscv64-unknown-elf python3
+riscv64-unknown-elf-gcc \
+    -march=rv64i -mabi=lp64 \
+    -ffreestanding -nostdlib -lgcc -O0 \
+    -fno-stack-protector \
+    -fomit-frame-pointer \
+    -Wl,-Ttext=0 \
+    -fno-pic -fno-pie \
+    _start.S \
+    "$SRC" -o temp.elf
 ```
 
-脚本也会自动尝试 `riscv-none-elf-` 前缀。其他前缀可以用 `--prefix` 指定。
+没有加入：
+
+- 自定义链接脚本；
+- `-O2`；
+- C-only 限制；
+- 数据段拒绝规则；
+- 额外 ABI、relax 或 jump-table 参数；
+- 新工具链前缀。
+
+输入仍由文件后缀交给 GCC 判断，所以用户原来的 `.cpp` 文件可以直接使用。
+
+## 启动代码
+
+`_start.S` 按用户提供内容保留：
+
+```asm
+    .section .text
+    .globl _start
+_start:
+    addi sp, x0, 2047
+    addi x1, x0, 128
+    jal ra, main
+
+end:
+    j end
+```
+
+本工具不调整栈对齐，也不删除或改写 `x1 = 128`。GNU 汇编器负责把 `j end` 等伪指令
+编码成 RV64I 机器码，`compile.py` 再将最终机器码输出为 `spec.isa` 支持的形式。
+
+## 安装到用户原目录
+
+将以下四个文件复制到：
+
+```text
+~/congProjects/riscv/
+```
+
+文件：
+
+```text
+run.sh
+build.sh
+compile.py
+_start.S
+```
+
+原来的这些文件无需修改：
+
+```text
+a.cpp
+b.cpp
+btc.cpp
+sha256.cpp
+encode.py
+```
+
+设置 shell 文件权限：
+
+```bash
+chmod +x run.sh build.sh
+```
 
 ## 使用
 
-```bash
-cd examples/rv64i/c-toolchain
-sh build.sh example.c -o example.asm
-```
-
-等价的直接命令：
+与原流程相同，只接收一个源文件：
 
 ```bash
-python3 compile_c.py example.c -o example.asm
+./run.sh a.cpp
 ```
 
-常用选项：
+也可以使用兼容入口：
 
 ```bash
-python3 compile_c.py program.c \
-  -o program.asm \
-  --stack-top 2032 \
-  --max-code-bytes 131072 \
-  -O 2
+./build.sh a.cpp
 ```
 
-若工具链命令不是默认名称：
-
-```bash
-python3 compile_c.py program.c \
-  -o program.asm \
-  --prefix /opt/riscv/bin/riscv64-unknown-elf-
-```
-
-成功时生成：
+执行过程仍打印：
 
 ```text
-program.asm
-program-build/program.elf
-program-build/program.text.bin
-program-build/program.objdump.txt
-program-build/program.map
+=======objdump========
+...
+
+=======asm========
+...
 ```
 
-## 实际 GCC 约束
-
-脚本构造的核心参数为：
+生成：
 
 ```text
--march=rv64i -mabi=lp64
--mcmodel=medany -mstrict-align
--mno-relax -mno-save-restore
--ffreestanding -nostdlib -nostartfiles -fno-builtin
--fno-pic -fno-pie -fno-stack-protector
--fno-jump-tables -fno-tree-switch-conversion
--Wl,--gc-sections -Wl,--no-relax -lgcc
+a.asm
 ```
 
-`-march=rv64i` 禁止 GCC 使用 M/A/F/D/C/V 等扩展。即使工具链或链接库仍意外产生了
-其他编码，Python 还会对最终 `.text` 中的每一条 32 位指令做第二次检查。
+临时 `temp.elf` 在成功或失败退出时删除。
 
-`libgcc` 用于满足编译器可能生成的基础辅助函数。最终结果仍必须通过同一指令白名单，
-所以链接到包含乘除扩展指令的错误库时会失败，而不是生成不可运行的程序。
+## 直接使用 `compile.py`
 
-## 启动和内存布局
+如果已经有原流程链接出的 ELF：
 
-链接地址从 `0` 开始，与当前 RV64 指令 RAM 的程序起点一致。`start.S` 执行：
+```bash
+python3 compile.py temp.elf -o program.asm
+```
+
+不指定 `-o` 时，ASM 写到标准输出，行为接近旧 `encode.py`：
+
+```bash
+python3 compile.py temp.elf > program.asm
+```
+
+可以显式指定 objdump 命令：
+
+```bash
+python3 compile.py temp.elf \
+  --objdump riscv64-unknown-elf-objdump \
+  -o program.asm
+```
+
+## ASM 输出
+
+输出只包含项目 `spec.isa` 已定义的 RV64I 助记符：
 
 ```asm
-lui  sp, %hi(__stack_top)
-addi sp, sp, %lo(__stack_top)
-jal  ra, main
-```
+# Generated from linked RV64I ELF for Turing Complete
+# Source ELF: temp.elf
 
-`main` 返回后进入无限跳转。返回值保留在 `a0`。
-
-默认栈顶是 `2032`，即 `0x7f0`，满足 RV64 LP64 ABI 的 16 字节对齐。需要根据实际数据
-RAM 地址空间调整时使用 `--stack-top`；脚本会拒绝零、负数和未对齐值。
-
-## 为什么只输出代码
-
-用户当前 RV64 是 Harvard 架构：指令 RAM 与 64 位数据 RAM 分离。已确认最新版可以把
-汇编结果装入指令 RAM，但尚未确认一种可重复的方式同时初始化独立数据 RAM。因此当前
-链接脚本要求以下段全部为空：
-
-```text
-.rodata
-.data
-.bss
-```
-
-这意味着当前支持：
-
-- 局部自动变量和栈上数组；
-- 纯整数控制流、函数调用、分支和移位；
-- CPU 已实现的 RV64I load/store；
-- 能由 RV64I 或合格 `libgcc` 实现的整数运算。
-
-当前不支持：
-
-- 全局或 `static` 变量；
-- 字符串字面量、全局常量表和初始化数组；
-- libc、文件、控制台、系统调用和动态分配；
-- C++ 运行时、构造函数、异常和 RTTI；
-- 依赖独立数据 RAM 预装镜像的程序。
-
-默认关闭 jump table 和 switch table，使常见 `switch` 尽量编译成代码分支。如果 GCC
-仍生成只读表，链接会带着明确错误退出。
-
-扩展到数据镜像时，应增加独立的 `program.data.bin` 及明确的数据 RAM 导入步骤，不能
-简单地把 `.data` 拼到指令字节后面。
-
-## `.asm` 输出格式
-
-生成文件只使用当前 `spec.isa` 已定义的真实 RV64I 助记符、寄存器、立即数和标签：
-
-```asm
 start:
-; 00000000: add x10,x11,x12
-    add x10, x11, x12
-
-; 00000004: jal x1,0x10
+# 00000000: addi sp,zero,2047
+    addi x2, x0, 2047
+# 00000004: addi ra,zero,128
+    addi x1, x0, 128
+# 00000008: jal ra,main
     jal x1, loc_00000010
 
 loc_00000010:
-    addi x10, x10, 1
+    addi x10, x0, 0
 ```
 
-最终 ELF 已经确定所有函数、分支和跳转的位置。生成器读取每条机器指令，并为 BRANCH 和
-JAL 的 PC-relative 目标建立 `loc_XXXXXXXX` 标签；JALR 保持寄存器加立即数形式。这样既
-保留 GCC 链接后的精确布局，也得到最新版可以直接输入的 ASM。
+以下内容不会进入最终文件：
 
-生成器覆盖：
+- 旧版 `0bxxxxxxxx` 四字节行；
+- `U32` 或 `.word`；
+- GNU `.section/.globl/.type` 指令；
+- objdump 的地址作为汇编立即数；
+- `spec.isa` 未实现的指令。
 
-```asm
-add sub sll slt sltu xor srl sra or and
-addi slti sltiu xori ori andi slli srli srai
-lb lh lw ld lbu lhu lwu
-sb sh sw sd
-beq bne blt bge bltu bgeu
-lui auipc jal jalr ecall ebreak
-addiw slliw srliw sraiw
-addw subw sllw srlw sraw
+## 为什么从最终机器码反解
+
+直接使用 `gcc -S` 会得到 GNU 汇编源码，其中可能包含：
+
+- `.section`、`.align`、`.type`、`.size`；
+- 局部数字标签；
+- 重定位表达式；
+- GNU 伪指令；
+- 游戏 `spec.isa` 不认识的语法。
+
+本流程先按用户原命令完成链接，再从 objdump 的每个 32 位机器码反解。因此函数位置、
+branch 和 jal 偏移已经确定。`compile.py` 为 PC-relative 目标生成 `loc_XXXXXXXX` 标签，
+输出可读且能由当前 `spec.isa` 重新汇编。
+
+## 检查和失败条件
+
+`compile.py` 会拒绝：
+
+- ELF 不存在；
+- 找不到 `riscv64-unknown-elf-objdump`；
+- objdump 执行失败；
+- 出现 16 位压缩指令或其他非 32 位编码；
+- 第一条指令不是地址 0；
+- 指令地址不是连续的 4 字节序列；
+- 出现 CPU/`spec.isa` 没有实现的 opcode 或 funct；
+- branch/jal 目标不是 objdump 中的指令地址。
+
+这些检查不会改变原 ELF，只避免生成地址已经错位或 CPU 无法执行的 ASM。
+
+## 数据段行为
+
+本流程不再擅自拒绝 `.data/.rodata/.bss`，因为用户原 GCC/encode 流程没有这个限制。
+
+但必须明确：旧 `encode.py` 只遍历 `objdump -d` 的指令，本流程也只转换可执行指令，不会
+额外生成数据 RAM 镜像。对于 `a.cpp` 中的全局数组，最终运行结果仍取决于用户原来如何
+向数据 RAM 写入初始化数据。这是原流程既有边界，本次不改变。
+
+## 验证
+
+不安装 RISC-V 工具链的纯 Python 测试覆盖：
+
+- 用户原 objdump 行格式；
+- 用户原 GCC 参数文本；
+- `_start.S` 的 `2047`、`128`、`jal main` 和死循环；
+- 12 个允许 opcode 组；
+- MUL/FENCE/CSR 等拒绝；
+- 32 位指令和连续地址要求；
+- branch/jal 标签重建；
+- 直接 ASM 输出而不是二进制文本。
+
+另使用 2.1.277 同步的 `isa_spec` 解析器，将 65 条、260 字节 RV64I 冒烟程序执行：
+
+```text
+原 ASM -> 机器码 -> compile.py 解码 ASM -> 重新汇编
 ```
 
-不会输出 `U32`、`.word`、GNU 段指令、`.globl`、`.type` 或未在 `spec.isa` 中定义的伪
-指令。使用者直接把 `program.asm` 文本粘贴到 RV64 程序编辑器。
+前后 260 字节完全一致。
 
-## 失败保护
-
-生成器在以下情况下退出且不保留旧的目标 `.asm`：
-
-- 缺少源文件、启动文件、链接脚本或交叉工具链；
-- `.text` 为空、不是 4 字节的倍数或超过容量限制；
-- 出现当前 CPU 白名单以外的 opcode/funct 编码；
-- BRANCH/JAL 目标不在 `.text` 内或不是 4 字节对齐；
-- 出现 `.rodata/.data/.bss`；
-- 栈顶未满足 16 字节对齐；
-- GCC、objcopy 或 objdump 返回失败。
-
-ELF、map、objdump 和原始 `.text.bin` 会留在构建目录，便于定位实际生成了哪条不兼容
-指令。
-
-## 当前验证边界
-
-仓库测试已经验证：
-
-- 12 个允许 opcode 组和主要 funct 限制；
-- `MUL`、`FENCE`、CSR 和未知 opcode 会被拒绝；
-- raw binary 按 little-endian 解成 32 位机器码；
-- 12 个 opcode 组可反解为 `spec.isa` 支持的真实助记符；
-- BRANCH/JAL 的 PC-relative 立即数可重建为本地标签；
-- 65 条指令、260 字节的冒烟程序经过“机器码 -> 生成 ASM -> `spec.isa` 重新汇编”后
-  逐字节相同；
-- GCC 命令包含 RV64I、LP64、freestanding、无 relax 和无表跳转约束；
-- 链接脚本拒绝三类数据段。
-
-按用户要求，本次没有在 Windows 本机安装或运行 RISC-V GCC。真实 GCC 编译、链接和游戏
-执行需要在用户已有的 Ubuntu 工具链环境中进行人工验收。
+按用户要求，本次没有在 Windows 本机安装或调用 RISC-V GCC。实际 `.cpp` 编译由用户在
+原 Ubuntu 目录中执行 `./run.sh a.cpp` 验收。

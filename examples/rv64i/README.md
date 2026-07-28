@@ -17,19 +17,17 @@
 此文件不会修改电路，也不会补充 CPU 尚未实现的硬件行为。它只负责把汇编语句编码成
 RV64I 机器码。
 
-## 从 C 生成程序
+## 从原 C/C++ 流程生成程序
 
 在已有 GNU RISC-V bare-metal 工具链的 Ubuntu 环境中：
 
 ```bash
 cd examples/rv64i/c-toolchain
-sh build.sh example.c -o example.asm
+./run.sh a.cpp
 ```
 
-流程会把 freestanding C 编译、链接，再把最终机器码反解为可直接复制到游戏程序编辑器
-的 RV64I 助记符和标签。当前版本只输出代码，遇到全局数据、字符串、
-`.rodata/.data/.bss` 会直接失败，原因是当前 Harvard 架构尚无已确认的数据 RAM 自动
-装载流程。
+流程保留用户原 `run.sh` 中的 `.cpp` 输入、GCC 参数和 `_start.S`，只把最后的
+`encode.py` 小端二进制文本替换成可直接复制到游戏程序编辑器的 RV64I 助记符和标签。
 
 ## 覆盖范围
 
@@ -75,8 +73,8 @@ add a0, a1, a2
 规格把 `;`、`//` 和 `#` 都配置为汇编源码的行注释。
 
 用户提供的旧版 GCC 参数和 little-endian 二进制流程已整理为独立的
-`c-toolchain/compile_c.py`。新版不再生成旧版逐字节粘贴文本，而是生成当前汇编器可直接
-输入的 RV64I 助记符 `.asm` 文件；工具不会写入存档。
+`c-toolchain/run.sh` 和 `c-toolchain/compile.py`。新版不再生成旧版逐字节粘贴文本，而是
+生成当前汇编器可直接输入的 RV64I 助记符 `.asm` 文件；工具不会写入存档。
 
 ## 来源和许可
 

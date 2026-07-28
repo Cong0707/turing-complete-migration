@@ -162,8 +162,8 @@ migration-output-.../
 - `docs/development.zh-CN.md`：继续开发格式支持的方法。
 - `docs/rv64i-spec.zh-CN.md`：与用户 RV64 CPU 的 12 个 opcode 组匹配的
   little-endian `spec.isa`、覆盖范围和验证结果。
-- `docs/rv64i-c-toolchain.zh-CN.md`：从 freestanding C 编译、链接并生成最新版可用
-  RV64I 助记符 `.asm` 的流程和 Harvard 数据段限制。
+- `docs/rv64i-c-toolchain.zh-CN.md`：保留用户原 `.cpp`、GCC 命令和 `_start.S`，仅将
+  `encode.py` 输出替换为最新版可直接输入 RV64I `.asm` 的兼容流程。
 
 独立成品位于 `examples/rv64i/spec.isa`，C 编译工具位于
 `examples/rv64i/c-toolchain/`。它们不会由迁移命令自动写入存档。
