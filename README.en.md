@@ -117,9 +117,10 @@ See `docs/rv64i-spec.zh-CN.md` for its instruction coverage and validation.
 
 `examples/rv64i/c-toolchain/` also contains a standard-library-only Python
 pipeline that compiles freestanding C with a GNU bare-metal RV64I toolchain and
-emits Turing Complete `U32` `.assembly`. It deliberately rejects `.rodata`,
-`.data`, and `.bss` until the separate Harvard data RAM has a verified loading
-path. See `docs/rv64i-c-toolchain.zh-CN.md`.
+decodes the linked image into RV64I mnemonic `.asm` that can be entered directly
+in Turing Complete. It deliberately rejects `.rodata`, `.data`, and `.bss`
+until the separate Harvard data RAM has a verified loading path. See
+`docs/rv64i-c-toolchain.zh-CN.md`.
 
 Code is MIT licensed. Format research references the CC0 `Stuffe/save_monger`
 project and its MIT-licensed SuperSnappy dependency. The RV64I example is

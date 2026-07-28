@@ -123,9 +123,9 @@ line_comments = [";", "//", "#"]
 examples/rv64i/c-toolchain/
 ```
 
-新流程仍由 GCC 完成汇编、链接和重定位，然后将最终 `.text` 写成当前汇编器支持的
-`U32` 语句。Python 会逐条验证机器码只使用本规格覆盖的编码。完整说明见
-`docs/rv64i-c-toolchain.zh-CN.md`。
+新流程仍由 GCC 完成汇编、链接和重定位，然后将最终 `.text` 反解为当前汇编器支持的
+真实 RV64I 助记符，并为 PC-relative branch/jal 重建本地标签。Python 会逐条验证机器码
+只使用本规格覆盖的编码。完整说明见 `docs/rv64i-c-toolchain.zh-CN.md`。
 
 当前流程故意拒绝 `.rodata/.data/.bss`。用户 RV64 的指令 RAM 与数据 RAM 分离，在没有
 明确的数据 RAM 装载协议前，把数据段附加到代码末尾会得到错误程序。

@@ -1,4 +1,4 @@
-# C → Turing Complete RV64I 编译流程
+# C → Turing Complete RV64I ASM 编译流程
 
 这套文件只生成程序，不修改 Turing Complete 存档，也不会自动安装交叉编译器。
 
@@ -24,46 +24,48 @@ Python 脚本只使用标准库，没有额外的 `pip` 依赖。
 ## 一条命令
 
 ```bash
-./build.sh example.c -o example.assembly
+./build.sh example.c -o example.asm
 ```
 
 如果脚本没有可执行权限：
 
 ```bash
-sh build.sh example.c -o example.assembly
+sh build.sh example.c -o example.asm
 ```
 
 也可以直接调用 Python：
 
 ```bash
-python3 compile_c.py example.c -o example.assembly
+python3 compile_c.py example.c -o example.asm
 ```
 
 输出：
 
 ```text
-example.assembly
+example.asm
 example-build/example.elf
 example-build/example.text.bin
 example-build/example.objdump.txt
 example-build/example.map
 ```
 
-`example.assembly` 使用最新版汇编器支持的形式：
+`example.asm` 使用最新版可以直接输入的真实 RV64I 汇编：
 
 ```text
-; 00000000: lui x2,0x0
-U32 0x00000137
+start:
+    lui x2, 0x0
+    addi x2, x2, 2032
+    jal x1, loc_00000010
 ```
 
-配合 `endianness = little` 的 RV64I `spec.isa`，每个 `U32` 会写成标准 RISC-V
-little-endian 四字节。
+脚本从最终链接后的机器码重建助记符和 PC-relative 标签，因此 `branch`/`jal` 的位置已经
+固定，同时输出仍是可读、可直接粘贴的 ASM，不包含 `U32` 原始数据语句。
 
 ## 可调参数
 
 ```bash
 python3 compile_c.py program.c \
-  -o program.assembly \
+  -o program.asm \
   --stack-top 2032 \
   --max-code-bytes 131072 \
   -O 2
@@ -73,7 +75,7 @@ python3 compile_c.py program.c \
 其他工具链前缀：
 
 ```bash
-python3 compile_c.py program.c -o program.assembly --prefix riscv-none-elf-
+python3 compile_c.py program.c -o program.asm --prefix riscv-none-elf-
 ```
 
 ## 第一版限制
@@ -94,8 +96,8 @@ python3 compile_c.py program.c -o program.assembly --prefix riscv-none-elf-
 
 ## 导入游戏
 
-把 `example.assembly` 的文本复制到使用同目录 `spec.isa` 的 RV64 架构程序编辑器中。
-生成文件中的每条 `U32` 都是一条已经完成链接和重定位的机器指令；不要再对其做字节倒序。
+把 `example.asm` 的文本直接复制到使用同目录 `spec.isa` 的 RV64 架构程序编辑器中。
+其中只包含 RV64I 助记符、寄存器、立即数、标签和 `;` 注释。
 
 ## 返回值和结束行为
 

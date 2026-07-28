@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile freestanding C to a Turing Complete RV64I .assembly file."""
+"""Compile freestanding C to assembly accepted by Turing Complete RV64I."""
 
 from __future__ import annotations
 
@@ -211,7 +211,155 @@ def validate_words(words: list[int], disassembly: dict[int, Instruction]) -> Non
         raise CompileError(f"生成了 CPU 未实现的指令：\n{preview}{extra}")
 
 
-def render_tc_assembly(
+def sign_extend(value: int, bits: int) -> int:
+    sign_bit = 1 << (bits - 1)
+    return (value ^ sign_bit) - sign_bit
+
+
+def control_flow_target(word: int, address: int) -> int | None:
+    opcode = word & 0x7F
+    if opcode == 0x63:  # BRANCH
+        immediate = (
+            (((word >> 31) & 0x1) << 12)
+            | (((word >> 25) & 0x3F) << 5)
+            | (((word >> 8) & 0xF) << 1)
+            | (((word >> 7) & 0x1) << 11)
+        )
+        return address + sign_extend(immediate, 13)
+    if opcode == 0x6F:  # JAL
+        immediate = (
+            (((word >> 31) & 0x1) << 20)
+            | (((word >> 21) & 0x3FF) << 1)
+            | (((word >> 20) & 0x1) << 11)
+            | (((word >> 12) & 0xFF) << 12)
+        )
+        return address + sign_extend(immediate, 21)
+    return None
+
+
+def collect_labels(words: list[int]) -> dict[int, str]:
+    labels = {0: "start"}
+    code_size = len(words) * 4
+    for index, word in enumerate(words):
+        address = index * 4
+        target = control_flow_target(word, address)
+        if target is None:
+            continue
+        if target < 0 or target >= code_size or target % 4 != 0:
+            raise CompileError(
+                f"0x{address:08x}: PC 相对目标 0x{target:x} "
+                "越出按 32 位指令对齐的 .text 镜像"
+            )
+        labels.setdefault(target, f"loc_{target:08x}")
+    return labels
+
+
+def decode_rv64i_word(word: int, address: int, labels: dict[int, str]) -> str:
+    reason = validate_rv64i_word(word)
+    if reason is not None:
+        raise CompileError(f"0x{address:08x}: 0x{word:08x}: {reason}")
+
+    opcode = word & 0x7F
+    rd = (word >> 7) & 0x1F
+    funct3 = (word >> 12) & 0x7
+    rs1 = (word >> 15) & 0x1F
+    rs2 = (word >> 20) & 0x1F
+    funct7 = (word >> 25) & 0x7F
+
+    if opcode == 0x33:
+        mnemonic = {
+            (0b000, 0x00): "add",
+            (0b000, 0x20): "sub",
+            (0b001, 0x00): "sll",
+            (0b010, 0x00): "slt",
+            (0b011, 0x00): "sltu",
+            (0b100, 0x00): "xor",
+            (0b101, 0x00): "srl",
+            (0b101, 0x20): "sra",
+            (0b110, 0x00): "or",
+            (0b111, 0x00): "and",
+        }[(funct3, funct7)]
+        return f"{mnemonic} x{rd}, x{rs1}, x{rs2}"
+
+    if opcode == 0x13:
+        if funct3 == 0b001:
+            return f"slli x{rd}, x{rs1}, {(word >> 20) & 0x3F}"
+        if funct3 == 0b101:
+            mnemonic = "srai" if ((word >> 26) & 0x3F) == 0x10 else "srli"
+            return f"{mnemonic} x{rd}, x{rs1}, {(word >> 20) & 0x3F}"
+        mnemonic = {
+            0b000: "addi",
+            0b010: "slti",
+            0b011: "sltiu",
+            0b100: "xori",
+            0b110: "ori",
+            0b111: "andi",
+        }[funct3]
+        immediate = sign_extend((word >> 20) & 0xFFF, 12)
+        return f"{mnemonic} x{rd}, x{rs1}, {immediate}"
+
+    if opcode == 0x03:
+        mnemonic = {0: "lb", 1: "lh", 2: "lw", 3: "ld", 4: "lbu", 5: "lhu", 6: "lwu"}[
+            funct3
+        ]
+        immediate = sign_extend((word >> 20) & 0xFFF, 12)
+        return f"{mnemonic} x{rd}, {immediate}(x{rs1})"
+
+    if opcode == 0x23:
+        mnemonic = {0: "sb", 1: "sh", 2: "sw", 3: "sd"}[funct3]
+        immediate_raw = ((word >> 25) << 5) | ((word >> 7) & 0x1F)
+        immediate = sign_extend(immediate_raw, 12)
+        return f"{mnemonic} x{rs2}, {immediate}(x{rs1})"
+
+    if opcode == 0x63:
+        mnemonic = {0: "beq", 1: "bne", 4: "blt", 5: "bge", 6: "bltu", 7: "bgeu"}[
+            funct3
+        ]
+        target = control_flow_target(word, address)
+        assert target is not None
+        return f"{mnemonic} x{rs1}, x{rs2}, {labels[target]}"
+
+    if opcode == 0x37:
+        return f"lui x{rd}, 0x{(word >> 12) & 0xFFFFF:x}"
+
+    if opcode == 0x17:
+        return f"auipc x{rd}, 0x{(word >> 12) & 0xFFFFF:x}"
+
+    if opcode == 0x6F:
+        target = control_flow_target(word, address)
+        assert target is not None
+        return f"jal x{rd}, {labels[target]}"
+
+    if opcode == 0x67:
+        immediate = sign_extend((word >> 20) & 0xFFF, 12)
+        return f"jalr x{rd}, {immediate}(x{rs1})"
+
+    if opcode == 0x73:
+        return "ecall" if word == 0x00000073 else "ebreak"
+
+    if opcode == 0x1B:
+        if funct3 == 0b000:
+            immediate = sign_extend((word >> 20) & 0xFFF, 12)
+            return f"addiw x{rd}, x{rs1}, {immediate}"
+        mnemonic = "slliw" if funct3 == 0b001 else (
+            "sraiw" if funct7 == 0x20 else "srliw"
+        )
+        return f"{mnemonic} x{rd}, x{rs1}, {(word >> 20) & 0x1F}"
+
+    if opcode == 0x3B:
+        mnemonic = {
+            (0b000, 0x00): "addw",
+            (0b000, 0x20): "subw",
+            (0b001, 0x00): "sllw",
+            (0b101, 0x00): "srlw",
+            (0b101, 0x20): "sraw",
+        }[(funct3, funct7)]
+        return f"{mnemonic} x{rd}, x{rs1}, x{rs2}"
+
+    raise CompileError(f"0x{address:08x}: decoder has no handler for 0x{word:08x}")
+
+
+def render_tc_asm(
     words: list[int],
     disassembly: dict[int, Instruction],
     *,
@@ -219,20 +367,23 @@ def render_tc_assembly(
     stack_top: int,
 ) -> str:
     lines = [
-        "; Generated by compile_c.py for Turing Complete RV64I",
+        "; Generated RV64I assembly for Turing Complete",
         "; Sources: " + ", ".join(source_names),
         f"; Stack top: 0x{stack_top:x}",
-        "; Each U32 value is emitted as four little-endian bytes by spec.isa.",
+        "; GCC has already resolved layout; generated labels preserve final PC offsets.",
         "",
     ]
+    labels = collect_labels(words)
     for index, word in enumerate(words):
         address = index * 4
+        if address in labels:
+            lines.append(f"{labels[address]}:")
         decoded = disassembly.get(address)
         if decoded is not None:
             lines.append(f"; {address:08x}: {decoded.text}")
         else:
             lines.append(f"; {address:08x}: <no objdump text>")
-        lines.append(f"U32 0x{word:08x}")
+        lines.append(f"    {decode_rv64i_word(word, address, labels)}")
     lines.append("")
     return "\n".join(lines)
 
@@ -294,10 +445,10 @@ def build_command(
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
-        description="把 freestanding C 编译成 Turing Complete RV64I .assembly"
+        description="把 freestanding C 编译成 Turing Complete 可直接输入的 RV64I ASM"
     )
     result.add_argument("sources", nargs="+", type=Path, help="一个或多个 .c 文件")
-    result.add_argument("-o", "--output", type=Path, help="输出 .assembly 文件")
+    result.add_argument("-o", "--output", type=Path, help="输出 .asm 文件")
     result.add_argument(
         "--build-dir", type=Path, help="ELF/bin/map/objdump 中间产物目录"
     )
@@ -357,7 +508,7 @@ def main(argv: list[str] | None = None) -> int:
         output = (
             args.output.expanduser().resolve()
             if args.output
-            else sources[0].with_suffix(".assembly")
+            else sources[0].with_suffix(".asm")
         )
         build_dir = (
             args.build_dir.expanduser().resolve()
@@ -417,7 +568,7 @@ def main(argv: list[str] | None = None) -> int:
         words = words_from_binary(data)
         disassembly = parse_objdump(dump_text)
         validate_words(words, disassembly)
-        assembly = render_tc_assembly(
+        assembly = render_tc_asm(
             words,
             disassembly,
             source_names=[source.name for source in sources],

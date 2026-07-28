@@ -2,7 +2,6 @@ from contextlib import redirect_stderr
 from importlib.util import module_from_spec, spec_from_file_location
 from io import StringIO
 from pathlib import Path
-import struct
 import sys
 import tempfile
 import unittest
@@ -70,28 +69,76 @@ class Rv64iCompileTests(unittest.TestCase):
                 with self.assertRaises(compile_c.CompileError):
                     compile_c.words_from_binary(data)
 
-    def test_parses_objdump_and_renders_u32_assembly(self):
+    def test_parses_objdump_and_renders_real_asm(self):
         dump = """
 0000000000000000 <_start>:
    0:   00c58533                add x10,x11,x12
    4:   00000013                addi x0,x0,0
 """
         disassembly = compile_c.parse_objdump(dump)
-        rendered = compile_c.render_tc_assembly(
+        rendered = compile_c.render_tc_asm(
             [0x00C58533, 0x00000013],
             disassembly,
             source_names=["example.c"],
             stack_top=2032,
         )
-        self.assertIn("U32 0x00c58533", rendered)
-        self.assertIn("U32 0x00000013", rendered)
-        raw_words = [
-            int(line.split()[1], 0)
-            for line in rendered.splitlines()
-            if line.startswith("U32 ")
+        self.assertIn("start:", rendered)
+        self.assertIn("add x10, x11, x12", rendered)
+        self.assertIn("addi x0, x0, 0", rendered)
+        self.assertNotIn("U32", rendered)
+
+    def test_decodes_every_supported_opcode_group_to_mnemonics(self):
+        words = [
+            0x00003003,  # ld x0, 0(x0)
+            0x00000013,  # addi x0, x0, 0
+            0x00000017,  # auipc x0, 0
+            0x0000001B,  # addiw x0, x0, 0
+            0x00003023,  # sd x0, 0(x0)
+            0x00000033,  # add x0, x0, x0
+            0x00000037,  # lui x0, 0
+            0x0000003B,  # addw x0, x0, x0
+            0x00000063,  # beq x0, x0, current address
+            0x00000067,  # jalr x0, 0(x0)
+            0x0000006F,  # jal x0, current address
+            0x00000073,  # ecall
         ]
-        rebuilt = b"".join(struct.pack("<I", word) for word in raw_words)
-        self.assertEqual(rebuilt, bytes.fromhex("33 85 c5 00 13 00 00 00"))
+        labels = compile_c.collect_labels(words)
+        mnemonics = [
+            compile_c.decode_rv64i_word(word, index * 4, labels).split()[0]
+            for index, word in enumerate(words)
+        ]
+        self.assertEqual(
+            mnemonics,
+            [
+                "ld",
+                "addi",
+                "auipc",
+                "addiw",
+                "sd",
+                "add",
+                "lui",
+                "addw",
+                "beq",
+                "jalr",
+                "jal",
+                "ecall",
+            ],
+        )
+
+    def test_rebuilds_pc_relative_labels(self):
+        words = [0x0080006F, 0x00000013, 0x00000013]
+        rendered = compile_c.render_tc_asm(
+            words,
+            {},
+            source_names=["jump.bin"],
+            stack_top=2032,
+        )
+        self.assertIn("jal x0, loc_00000008", rendered)
+        self.assertIn("loc_00000008:", rendered)
+
+    def test_rejects_pc_relative_target_outside_text(self):
+        with self.assertRaisesRegex(compile_c.CompileError, "PC 相对目标"):
+            compile_c.collect_labels([0x0080006F])
 
     def test_validate_words_reports_machine_code_address(self):
         with self.assertRaisesRegex(compile_c.CompileError, "0x00000000"):

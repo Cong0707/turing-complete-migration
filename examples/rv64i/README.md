@@ -23,12 +23,13 @@ RV64I 机器码。
 
 ```bash
 cd examples/rv64i/c-toolchain
-sh build.sh example.c -o example.assembly
+sh build.sh example.c -o example.asm
 ```
 
-流程会把 freestanding C 编译、链接并转换成可复制到游戏程序编辑器的 `U32`
-`.assembly`。当前版本只输出代码，遇到全局数据、字符串、`.rodata/.data/.bss` 会直接
-失败，原因是当前 Harvard 架构尚无已确认的数据 RAM 自动装载流程。
+流程会把 freestanding C 编译、链接，再把最终机器码反解为可直接复制到游戏程序编辑器
+的 RV64I 助记符和标签。当前版本只输出代码，遇到全局数据、字符串、
+`.rodata/.data/.bss` 会直接失败，原因是当前 Harvard 架构尚无已确认的数据 RAM 自动
+装载流程。
 
 ## 覆盖范围
 
@@ -74,8 +75,8 @@ add a0, a1, a2
 规格把 `;`、`//` 和 `#` 都配置为汇编源码的行注释。
 
 用户提供的旧版 GCC 参数和 little-endian 二进制流程已整理为独立的
-`c-toolchain/compile_c.py`。新版不再生成旧版逐字节粘贴文本，而是生成当前汇编器原生
-支持的 `U32` `.assembly` 文件；工具不会写入存档。
+`c-toolchain/compile_c.py`。新版不再生成旧版逐字节粘贴文本，而是生成当前汇编器可直接
+输入的 RV64I 助记符 `.asm` 文件；工具不会写入存档。
 
 ## 来源和许可
 

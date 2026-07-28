@@ -1,4 +1,4 @@
-# 从 C 生成 RV64I `.assembly`
+# 从 C 生成可直接输入的 RV64I `.asm`
 
 ## 目标
 
@@ -10,7 +10,8 @@ freestanding C
   -> 地址 0 开始的 ELF .text
   -> little-endian 原始机器码
   -> 指令白名单验证
-  -> Turing Complete U32 .assembly
+  -> 反解为 RV64I 助记符并重建 branch/jal 标签
+  -> Turing Complete 可直接输入的 .asm
 ```
 
 它只生成文件，不读取或修改 Turing Complete 存档。
@@ -19,7 +20,7 @@ freestanding C
 
 | 文件 | 用途 |
 | --- | --- |
-| `compile_c.py` | 调用交叉工具链、验证机器码并生成 `.assembly` |
+| `compile_c.py` | 调用交叉工具链、验证机器码并生成真实助记符 `.asm` |
 | `build.sh` | Linux/macOS shell 入口 |
 | `start.S` | 设置栈顶、调用 `main`、返回后原地循环 |
 | `tc-rv64-code-only.ld` | 将 `.text` 链接到地址 0，并拒绝数据段 |
@@ -49,20 +50,20 @@ sudo apt install gcc-riscv64-unknown-elf binutils-riscv64-unknown-elf python3
 
 ```bash
 cd examples/rv64i/c-toolchain
-sh build.sh example.c -o example.assembly
+sh build.sh example.c -o example.asm
 ```
 
 等价的直接命令：
 
 ```bash
-python3 compile_c.py example.c -o example.assembly
+python3 compile_c.py example.c -o example.asm
 ```
 
 常用选项：
 
 ```bash
 python3 compile_c.py program.c \
-  -o program.assembly \
+  -o program.asm \
   --stack-top 2032 \
   --max-code-bytes 131072 \
   -O 2
@@ -72,14 +73,14 @@ python3 compile_c.py program.c \
 
 ```bash
 python3 compile_c.py program.c \
-  -o program.assembly \
+  -o program.asm \
   --prefix /opt/riscv/bin/riscv64-unknown-elf-
 ```
 
 成功时生成：
 
 ```text
-program.assembly
+program.asm
 program-build/program.elf
 program-build/program.text.bin
 program-build/program.objdump.txt
@@ -154,36 +155,50 @@ RAM 地址空间调整时使用 `--stack-top`；脚本会拒绝零、负数和�
 扩展到数据镜像时，应增加独立的 `program.data.bin` 及明确的数据 RAM 导入步骤，不能
 简单地把 `.data` 拼到指令字节后面。
 
-## `.assembly` 输出格式
+## `.asm` 输出格式
 
-生成文件使用：
+生成文件只使用当前 `spec.isa` 已定义的真实 RV64I 助记符、寄存器、立即数和标签：
 
 ```asm
+start:
 ; 00000000: add x10,x11,x12
-U32 0x00c58533
+    add x10, x11, x12
+
+; 00000004: jal x1,0x10
+    jal x1, loc_00000010
+
+loc_00000010:
+    addi x10, x10, 1
 ```
 
-`U32` 是当前 Turing Complete 汇编器的原生数据语句。配合项目中 `spec.isa` 的：
+最终 ELF 已经确定所有函数、分支和跳转的位置。生成器读取每条机器指令，并为 BRANCH 和
+JAL 的 PC-relative 目标建立 `loc_XXXXXXXX` 标签；JALR 保持寄存器加立即数形式。这样既
+保留 GCC 链接后的精确布局，也得到最新版可以直接输入的 ASM。
 
-```ini
-endianness = little
+生成器覆盖：
+
+```asm
+add sub sll slt sltu xor srl sra or and
+addi slti sltiu xori ori andi slli srli srai
+lb lh lw ld lbu lhu lwu
+sb sh sw sd
+beq bne blt bge bltu bgeu
+lui auipc jal jalr ecall ebreak
+addiw slliw srliw sraiw
+addw subw sllw srlw sraw
 ```
 
-上述值写为：
-
-```text
-33 85 c5 00
-```
-
-这些值已经完成 GCC 汇编、链接和重定位。使用者不需要也不应再次处理标签或倒转字节。
+不会输出 `U32`、`.word`、GNU 段指令、`.globl`、`.type` 或未在 `spec.isa` 中定义的伪
+指令。使用者直接把 `program.asm` 文本粘贴到 RV64 程序编辑器。
 
 ## 失败保护
 
-生成器在以下情况下退出且不保留旧的目标 `.assembly`：
+生成器在以下情况下退出且不保留旧的目标 `.asm`：
 
 - 缺少源文件、启动文件、链接脚本或交叉工具链；
 - `.text` 为空、不是 4 字节的倍数或超过容量限制；
 - 出现当前 CPU 白名单以外的 opcode/funct 编码；
+- BRANCH/JAL 目标不在 `.text` 内或不是 4 字节对齐；
 - 出现 `.rodata/.data/.bss`；
 - 栈顶未满足 16 字节对齐；
 - GCC、objcopy 或 objdump 返回失败。
@@ -197,9 +212,11 @@ ELF、map、objdump 和原始 `.text.bin` 会留在构建目录，便于定位�
 
 - 12 个允许 opcode 组和主要 funct 限制；
 - `MUL`、`FENCE`、CSR 和未知 opcode 会被拒绝；
-- raw binary 按 little-endian 解成 `U32`；
-- `U32 0x00c58533` 经 2.1.277 同步的 `isa_spec` 解析器输出
-  `33 85 c5 00`；
+- raw binary 按 little-endian 解成 32 位机器码；
+- 12 个 opcode 组可反解为 `spec.isa` 支持的真实助记符；
+- BRANCH/JAL 的 PC-relative 立即数可重建为本地标签；
+- 65 条指令、260 字节的冒烟程序经过“机器码 -> 生成 ASM -> `spec.isa` 重新汇编”后
+  逐字节相同；
 - GCC 命令包含 RV64I、LP64、freestanding、无 relax 和无表跳转约束；
 - 链接脚本拒绝三类数据段。
 

@@ -2,13 +2,14 @@
 
 ## Unreleased
 
-- Add a freestanding C to RV64I `U32` `.assembly` toolchain with startup code,
-  a code-only linker layout, opcode/funct validation and reproducible ELF/bin/
-  objdump/map artifacts.
+- Add a freestanding C to directly enterable RV64I mnemonic `.asm` toolchain
+  with startup code, a code-only linker layout, opcode/funct validation,
+  PC-relative label reconstruction and reproducible ELF/bin/objdump/map
+  artifacts.
 - Reject `.rodata`, `.data` and `.bss` instead of silently producing an invalid
   image for the user's separate instruction/data memory architecture.
-- Add 11 regression tests for the compiler wrapper without requiring a local
-  RISC-V toolchain.
+- Add 14 regression tests for the compiler wrapper without requiring a local
+  RISC-V toolchain, plus a 65-instruction/260-byte `spec.isa` round trip.
 - Add a standalone little-endian RV64I `spec.isa` covering the 12 opcode groups
   implemented by the migrated CPU, plus a smoke-test program and Chinese
   coverage/endianness documentation.
