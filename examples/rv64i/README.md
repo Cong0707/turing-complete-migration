@@ -4,7 +4,9 @@
 
 - 成品：`spec.isa`
 - 编译冒烟测试：`smoke-test.asm`
+- C 编译流程：`c-toolchain/`
 - 完整说明：[`../../docs/rv64i-spec.zh-CN.md`](../../docs/rv64i-spec.zh-CN.md)
+- C 编译说明：[`../../docs/rv64i-c-toolchain.zh-CN.md`](../../docs/rv64i-c-toolchain.zh-CN.md)
 
 把 `spec.isa` 放到目标架构电路目录，与 `circuit.data` 同级。用户当前 RV64 的位置为：
 
@@ -14,6 +16,19 @@
 
 此文件不会修改电路，也不会补充 CPU 尚未实现的硬件行为。它只负责把汇编语句编码成
 RV64I 机器码。
+
+## 从 C 生成程序
+
+在已有 GNU RISC-V bare-metal 工具链的 Ubuntu 环境中：
+
+```bash
+cd examples/rv64i/c-toolchain
+sh build.sh example.c -o example.assembly
+```
+
+流程会把 freestanding C 编译、链接并转换成可复制到游戏程序编辑器的 `U32`
+`.assembly`。当前版本只输出代码，遇到全局数据、字符串、`.rodata/.data/.bss` 会直接
+失败，原因是当前 Harvard 架构尚无已确认的数据 RAM 自动装载流程。
 
 ## 覆盖范围
 
@@ -58,9 +73,9 @@ add a0, a1, a2
 
 规格把 `;`、`//` 和 `#` 都配置为汇编源码的行注释。
 
-用户提供的 GCC/objdump/二进制写入脚本属于旧版流程，本示例没有把它迁移成新版写入
-工具。该流程目前只用于确认 `-march=rv64i` 和 little-endian 字节顺序；新版程序导入
-方式留待后续单独设计。
+用户提供的旧版 GCC 参数和 little-endian 二进制流程已整理为独立的
+`c-toolchain/compile_c.py`。新版不再生成旧版逐字节粘贴文本，而是生成当前汇编器原生
+支持的 `U32` `.assembly` 文件；工具不会写入存档。
 
 ## 来源和许可
 

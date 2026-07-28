@@ -114,16 +114,21 @@ line_comments = [";", "//", "#"]
 
 因此常见的 `#` 汇编注释也能被忽略。
 
-## 旧版 GCC/二进制写入流程
+## C/GCC 编译流程
 
 用户提供的 `riscv64-unknown-elf-gcc -march=rv64i -mabi=lp64`、`objdump` 和
-`encode.py` 是旧版通过二进制写入程序的流程。本次只用它确认两点：
+`encode.py` 是旧版通过二进制写入程序的流程。项目现已提供：
 
-- 编译目标确实限制为 RV64I，与本规格覆盖范围一致。
-- `encode.py` 输出低字节在前，与 `endianness = little` 一致。
+```text
+examples/rv64i/c-toolchain/
+```
 
-该旧流程不作为最新版程序导入方案的一部分；它的原始数据语法、段布局、代码与数据
-装载方式均留待用户确定新版需求后另行设计。
+新流程仍由 GCC 完成汇编、链接和重定位，然后将最终 `.text` 写成当前汇编器支持的
+`U32` 语句。Python 会逐条验证机器码只使用本规格覆盖的编码。完整说明见
+`docs/rv64i-c-toolchain.zh-CN.md`。
+
+当前流程故意拒绝 `.rodata/.data/.bss`。用户 RV64 的指令 RAM 与数据 RAM 分离，在没有
+明确的数据 RAM 装载协议前，把数据段附加到代码末尾会得到错误程序。
 
 ## 使用
 

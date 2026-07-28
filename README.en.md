@@ -115,6 +115,12 @@ An optional little-endian RV64I assembler specification for the 12 opcode
 groups implemented by the user's CPU is available at `examples/rv64i/spec.isa`.
 See `docs/rv64i-spec.zh-CN.md` for its instruction coverage and validation.
 
+`examples/rv64i/c-toolchain/` also contains a standard-library-only Python
+pipeline that compiles freestanding C with a GNU bare-metal RV64I toolchain and
+emits Turing Complete `U32` `.assembly`. It deliberately rejects `.rodata`,
+`.data`, and `.bss` until the separate Harvard data RAM has a verified loading
+path. See `docs/rv64i-c-toolchain.zh-CN.md`.
+
 Code is MIT licensed. Format research references the CC0 `Stuffe/save_monger`
 project and its MIT-licensed SuperSnappy dependency. The RV64I example is
 adapted from the MIT-licensed `Stuffe/isa_spec` project. This is an independent

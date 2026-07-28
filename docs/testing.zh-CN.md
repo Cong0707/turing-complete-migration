@@ -6,7 +6,7 @@
 python -m unittest discover -s tests -v
 ```
 
-当前 35 项测试覆盖：
+当前 46 项测试覆盖：
 
 - raw Snappy literal/COPY 解码、literal 编码往返和异常大小拒绝。
 - 合法 v6 Custom、Program、路径段解析及 v15 转换。
@@ -25,8 +25,13 @@ python -m unittest discover -s tests -v
 - 默认安装、回滚、Steam Auto-Cloud 门禁、显式云关闭确认和路径隔离。
 - RV64I `spec.isa` 的 little-endian 设置、12 个允许的 opcode，以及每个定义严格只输出
   一条 32 位指令。
+- C 编译包装器的 12 类允许 opcode、MUL/FENCE/CSR 拒绝、32 位指令长度、objdump
+  解析、little-endian `U32` 输出、工具链前缀回退、GCC 约束和数据段链接保护。
 
 所有二进制测试样本由测试代码构造，不包含真实用户存档或游戏资源。
+
+按用户要求，C 编译流程没有在 Windows 本机安装或调用 RISC-V GCC。测试覆盖 Python
+生成和验证逻辑；真实 GNU 交叉编译及游戏运行由用户在已有 Ubuntu 环境中验收。
 
 ## 真实存档只读验证
 
