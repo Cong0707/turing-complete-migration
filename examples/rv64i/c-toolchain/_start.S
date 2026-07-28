@@ -1,11 +1,9 @@
     .section .text
     .globl _start
 _start:
-    addi sp, x0, 2047        # 栈顶
-
-    addi x1, x0, 128         # x1 = 128
-
+    lui x2, 0x2
+    addi x2, x2, 0
     jal ra, main
 
 end:
-    j end                    # 程序结束，死循环
+    j end                   # 程序结束，死循环
