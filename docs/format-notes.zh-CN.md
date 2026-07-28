@@ -190,6 +190,13 @@ v6 的 Program 选择表以数字关卡 ID 为键，v15 使用字符串。工具
 完全等价的新元件。映射表为每类标记 `exact`、`approximate`、`placeholder` 或
 `deleted`，报告会列出受影响数量和说明。
 
+当前枚举仍保留内部类型 `com_cc_input_buffer = 80`，但 2.1.281 的编辑器资源中没有
+对应 sprite/mesh，原生 v13～v15 电路也不保存该类型。把旧 Buffer、Bidirectional 和
+VirtualBidirectional 直接写成 kind 80 会在打开元件工坊时触发
+`Failed to create component mesh com_cc_input_buffer`。迁移器因此使用可编辑的
+`com_cc_input = 79`，保留位宽、位置、旋转、永久 ID 和 UI 顺序，并写入当前格式定义的
+默认设置 `[2]`。这是结构可加载的近似替代；双向/缓冲语义仍应在游戏中人工验收。
+
 ## 真实数据验证
 
 - 0.1059：92 个源主电路全为 v6；另派生 6 个 OVERTURE 剧情方案，正式目标为 98 个

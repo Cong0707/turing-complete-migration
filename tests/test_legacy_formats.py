@@ -2,12 +2,15 @@ import struct
 import unittest
 
 from turing_complete_migration.legacy_v6 import (
+    COM_CC_INPUT,
     COM_CONSTANT,
     COM_CUSTOM,
     COM_LEVEL_INPUT_1_PIN,
     COM_LEVEL_OUTPUT_1_PIN,
     COM_NAND_BIT,
     COM_RAM,
+    LegacyComponent,
+    convert_component,
     convert_circuit_bytes,
     parse_v15,
 )
@@ -124,6 +127,28 @@ def build_v6_level_solution(*, save_id: int = 0, campaign_bound: bool = False) -
 
 
 class LegacyFormatTests(unittest.TestCase):
+    def test_legacy_bidirectional_pin_uses_renderable_current_input(self):
+        converted = convert_component(
+            LegacyComponent(
+                kind=256,
+                position=(-16, 12),
+                rotation=2,
+                permanent_id=2548499952136799880,
+                custom_string="",
+                setting_1=0,
+                setting_2=0,
+                ui_order=-18,
+            )
+        )
+
+        self.assertIsNotNone(converted)
+        self.assertEqual(converted.kind, COM_CC_INPUT)
+        self.assertEqual(converted.word_size, 64)
+        self.assertEqual(converted.settings, (2,))
+        self.assertEqual(converted.position, (-16, 12))
+        self.assertEqual(converted.rotation, 2)
+        self.assertEqual(converted.permanent_id, 2548499952136799880)
+
     def test_v6_custom_program_and_wire_convert_to_v15(self):
         converted, report = convert_circuit_bytes(build_v6_custom_program())
         parsed = parse_v15(converted)

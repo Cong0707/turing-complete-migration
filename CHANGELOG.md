@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Map legacy buffer and bidirectional custom pins to the renderable
+  `com_cc_input` editor component with its current default setting `[2]`.
+  Do not serialize the internal `com_cc_input_buffer`, which has no component
+  mesh in Turing Complete 2.1.281 and crashes the foundry renderer.
 - Add a compatibility-first C/C++ to RV64I mnemonic `.asm` flow that preserves
   the user's original `run.sh` GCC command, `.cpp` input, `_start.S`, `-O0`,
   `-Ttext=0`, `sp=2047` and `x1=128` behavior.

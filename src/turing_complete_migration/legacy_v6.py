@@ -460,7 +460,13 @@ def _register(kinds: tuple[int, ...], target: int, width: int, quality: str = "e
 
 _register((1,), COM_OFF, 1)
 _register((2,), COM_ON, 1)
-_register((3,), COM_CC_INPUT_BUFFER, 1, "approximate", "legacy buffer replaced by input buffer")
+_register(
+    (3,),
+    COM_CC_INPUT,
+    1,
+    "approximate",
+    "legacy buffer replaced by an editable custom input pin",
+)
 _register((4,), COM_NOT_BIT, 1)
 _register((5,), COM_AND_BIT, 1)
 _register((6,), COM_AND_3_BIT, 1)
@@ -559,9 +565,21 @@ _register((125,), COM_CC_INPUT, 32)
 _register((126,), COM_CC_OUTPUT, 16)
 _register((127,), COM_CC_OUTPUT, 32)
 for old_kind, width in ((128, 1), (129, 8), (130, 16), (131, 32), (132, 64)):
-    _register((old_kind,), COM_CC_INPUT_BUFFER, width, "approximate", "obsolete value represented a bidirectional component")
+    _register(
+        (old_kind,),
+        COM_CC_INPUT,
+        width,
+        "approximate",
+        "obsolete bidirectional value replaced by an editable custom input pin",
+    )
 for old_kind, width in ((133, 8), (134, 16), (135, 32), (136, 64)):
-    _register((old_kind,), COM_CC_INPUT_BUFFER, width, "approximate", "legacy buffer replaced by input buffer")
+    _register(
+        (old_kind,),
+        COM_CC_INPUT,
+        width,
+        "approximate",
+        "legacy buffer replaced by an editable custom input pin",
+    )
 _register((137,), COM_PROBE_WIRE_BIT, 1)
 _register((138,), COM_PROBE_WIRE_WORD, 64)
 _register((139,), COM_SWITCH_BIT, 1)
@@ -611,8 +629,25 @@ _register((242,), COM_LEVEL_OUTPUT_1_PIN, 1)
 _register((243,), COM_LEVEL_OUTPUT_8_PIN, 8)
 for old_kind, width in ((244, 8), (245, 16), (246, 32), (247, 64)):
     _register((old_kind,), COM_ASR, width)
-for old_kind, width in ((248, 1), (249, 1), (250, 8), (251, 8), (252, 16), (253, 16), (254, 32), (255, 32), (256, 64), (257, 64)):
-    _register((old_kind,), COM_CC_INPUT_BUFFER, width, "approximate", "bidirectional component replaced by input buffer")
+for old_kind, width in (
+    (248, 1),
+    (249, 1),
+    (250, 8),
+    (251, 8),
+    (252, 16),
+    (253, 16),
+    (254, 32),
+    (255, 32),
+    (256, 64),
+    (257, 64),
+):
+    _register(
+        (old_kind,),
+        COM_CC_INPUT,
+        width,
+        "approximate",
+        "bidirectional component replaced by an editable custom input pin",
+    )
 
 
 _DELETED_KINDS = {0, 19, 20, 21, 22, 41, 42, 53, 57, 58, 66, 67, 82, 83, 91}
