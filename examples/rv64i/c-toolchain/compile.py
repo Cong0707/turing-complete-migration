@@ -324,7 +324,7 @@ def render_asm(instructions: list[Instruction], source_name: str) -> str:
     for instruction in instructions:
         if instruction.address in labels:
             lines.append(f"{labels[instruction.address]}:")
-        lines.append(f"# {instruction.address:08x}: {instruction.text}")
+        #lines.append(f"# {instruction.address:08x}: {instruction.text}")
         lines.append(f"    {decode_instruction(instruction, labels)}")
     lines.append("")
     return "\n".join(lines)
