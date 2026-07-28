@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Add a standalone little-endian RV64I `spec.isa` covering the 12 opcode groups
+  implemented by the migrated CPU, plus a smoke-test program and Chinese
+  coverage/endianness documentation.
+- Validate the specification with the Turing Complete 2.1.277-synchronized
+  `Stuffe/isa_spec` parser and nine upstream RV64I machine-code suites.
+- Add two regression tests for the exact opcode set and 32-bit-only output rule;
+  the complete suite now contains 35 tests.
+
 ## 0.2.3 - 2026-07-27
 
 - Parse v13 and v14 current-enum circuits, including their single-string,

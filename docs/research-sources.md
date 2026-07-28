@@ -15,6 +15,12 @@ Public references used during the initial implementation:
 - [Stuffe/save_monger](https://github.com/Stuffe/save_monger) — CC0 format
   implementation. Current reference commit `d6505a8` documents v15-era fields;
   historical commit `22fa398` documents the 0.1042 Beta v6 layout and old enum.
+- [Turing Complete Wiki: Spec.isa](https://turingcomplete.wiki/wiki/Spec.isa) —
+  current syntax reference for settings, fields, instruction patterns,
+  expressions, labels, slicing and endianness.
+- [Stuffe/isa_spec](https://github.com/Stuffe/isa_spec) — MIT-licensed parser,
+  assembler and ISA library. The RV64I example uses commit `24f317b`, synced
+  from Turing Complete 2.1.277, as its compatibility and machine-code baseline.
 
 Local evidence was collected from user-owned save copies and the installed
 2.1.276 executable. No save data, tokens, game binaries, or extracted game

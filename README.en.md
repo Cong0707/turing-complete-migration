@@ -93,7 +93,7 @@ recovery options and should only be used deliberately.
 - 34 foundry definitions cover all 33 referenced Custom IDs and 189 reported
   instances after OVERTURE derivation,
   with no missing or duplicate definitions.
-- The repository has 33 generated-fixture tests and contains no real save data.
+- The repository has 35 tests and contains no real save data.
 
 ## Limitations
 
@@ -111,6 +111,11 @@ and rebuilds it from the component layout through `update_custom_design`.
 Never upload a complete save: `settings.txt` may contain a personalized token.
 The Chinese README and `docs/` contain the full format notes and test evidence.
 
+An optional little-endian RV64I assembler specification for the 12 opcode
+groups implemented by the user's CPU is available at `examples/rv64i/spec.isa`.
+See `docs/rv64i-spec.zh-CN.md` for its instruction coverage and validation.
+
 Code is MIT licensed. Format research references the CC0 `Stuffe/save_monger`
-project and its MIT-licensed SuperSnappy dependency. This is an independent
+project and its MIT-licensed SuperSnappy dependency. The RV64I example is
+adapted from the MIT-licensed `Stuffe/isa_spec` project. This is an independent
 community tool and contains no game files or user saves.

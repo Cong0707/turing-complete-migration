@@ -6,7 +6,7 @@
 python -m unittest discover -s tests -v
 ```
 
-当前 33 项测试覆盖：
+当前 35 项测试覆盖：
 
 - raw Snappy literal/COPY 解码、literal 编码往返和异常大小拒绝。
 - 合法 v6 Custom、Program、路径段解析及 v15 转换。
@@ -23,6 +23,8 @@ python -m unittest discover -s tests -v
   分阶段派生。
 - marker 对方案删除、当前电路缺失、数量变化和原件篡改的检测。
 - 默认安装、回滚、Steam Auto-Cloud 门禁、显式云关闭确认和路径隔离。
+- RV64I `spec.isa` 的 little-endian 设置、12 个允许的 opcode，以及每个定义严格只输出
+  一条 32 位指令。
 
 所有二进制测试样本由测试代码构造，不包含真实用户存档或游戏资源。
 

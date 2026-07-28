@@ -120,7 +120,7 @@ tcmigrate rollback "%APPDATA%\Turing Complete.tcm-backup-..." "%APPDATA%\Turing 
   阶段 4～5 与 `binary_programming` 加 11 个，运行时 49 个。
 - 自定义元件：34 个 foundry 定义覆盖全部 33 个被引用 ID；派生 OVERTURE 后报告中共有
   189 个 Custom 引用实例，缺失/重复 ID 为 0。
-- 自动化测试：33 项，测试数据均由代码生成，不含用户存档。
+- 自动化测试：35 项，测试数据均由代码生成，不含用户存档。
 
 ## 不可自动消除的差异
 
@@ -160,10 +160,15 @@ migration-output-.../
 - `docs/testing.zh-CN.md`：自动化及真实存档验证结果。
 - `docs/recovery.zh-CN.md`：有备份和无备份两种安装方式。
 - `docs/development.zh-CN.md`：继续开发格式支持的方法。
+- `docs/rv64i-spec.zh-CN.md`：与用户 RV64 CPU 的 12 个 opcode 组匹配的
+  little-endian `spec.isa`、覆盖范围和验证结果。
+
+独立成品位于 `examples/rv64i/spec.isa`。它不会由迁移命令自动写入存档。
 
 ## 许可证
 
 项目代码使用 MIT License。格式研究参考了 CC0 的 `Stuffe/save_monger` 和其 MIT
-许可的 SuperSnappy 依赖；本仓库不包含游戏文件、用户存档或提取出的游戏源码。
+许可的 SuperSnappy 依赖；RV64I 示例改编自 MIT 许可的 `Stuffe/isa_spec`。本仓库
+不包含游戏文件、用户存档或提取出的游戏源码。
 
 本项目是社区工具，与 Turing Complete 开发者和发行方无关。
