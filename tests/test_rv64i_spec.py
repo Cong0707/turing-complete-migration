@@ -20,6 +20,27 @@ EXPECTED_OPCODES = {
 }
 
 
+def register_encoding(source: str, name: str) -> int:
+    fields_source = source.split("[fields]", 1)[1].split("[instructions]", 1)[0]
+    match = re.search(rf"(?m)^{re.escape(name)}\s+([01]{{5}})\s*$", fields_source)
+    if match is None:
+        raise AssertionError(f"register {name!r} is missing from spec.isa")
+    return int(match.group(1), 2)
+
+
+def encode_lui_from_definition(source: str, dest: str, immediate: int) -> bytes:
+    instruction_source = source.split("[instructions]", 1)[1]
+    match = re.search(
+        r"(?m)^lui\s+%dest\(register\)\s+,\s+%imm:S64\(immediate\)\s*$\n"
+        r"^%imm\[19:0\]\s+%dest\[4:0\]\s+0110111\s*$",
+        instruction_source,
+    )
+    if match is None:
+        raise AssertionError("unexpected LUI definition in spec.isa")
+    word = ((immediate & 0xFFFFF) << 12) | (register_encoding(source, dest) << 7) | 0x37
+    return word.to_bytes(4, "little")
+
+
 def instruction_patterns(source: str) -> list[tuple[str, int]]:
     instruction_source = source.split("[instructions]", 1)[1]
     patterns: list[tuple[str, int]] = []
@@ -67,6 +88,20 @@ class Rv64iSpecTests(unittest.TestCase):
         patterns = instruction_patterns(source)
         self.assertGreaterEqual(len(patterns), 39)
         self.assertTrue(all(width == 32 for _, width in patterns))
+
+    def test_lui_encodes_upper_immediate_in_little_endian_order(self):
+        source = SPEC_PATH.read_text("utf-8")
+        cases = {
+            ("x0", 0x00000): bytes.fromhex("37 00 00 00"),
+            ("a0", 0x12345): bytes.fromhex("37 55 34 12"),
+            ("x15", 0x76543): bytes.fromhex("b7 37 54 76"),
+            ("x31", 0xFFFFF): bytes.fromhex("b7 ff ff ff"),
+        }
+        for (dest, immediate), expected in cases.items():
+            with self.subTest(dest=dest, immediate=hex(immediate)):
+                self.assertEqual(
+                    encode_lui_from_definition(source, dest, immediate), expected
+                )
 
 
 if __name__ == "__main__":

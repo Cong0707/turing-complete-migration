@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a direct LUI regression for `lui x15, 0x76543 = 0x765437b7`
+  (`b7 37 54 76` in little-endian byte order), and document how a 4096-byte
+  Program buffer wraps address `0x10bc` to `0x00bc`, where `0x00008067`
+  belongs to an existing JALR instruction rather than the LUI definition.
 - Map legacy buffer and bidirectional custom pins to the renderable
   `com_cc_input` editor component with its current default setting `[2]`.
   Do not serialize the internal `com_cc_input_buffer`, which has no component

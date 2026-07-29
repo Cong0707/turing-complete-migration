@@ -167,7 +167,7 @@ class Rv64iCompileTests(unittest.TestCase):
         self.assertIn("addi x2, x0, 2047", rendered)
         self.assertIn("jal x0, loc_00000004", rendered)
 
-    def test_run_sh_preserves_original_gcc_command(self):
+    def test_run_sh_preserves_current_gcc_command(self):
         source = (TOOLCHAIN_DIR / "run.sh").read_text("utf-8")
         for text in (
             'SRC="$1"',
@@ -178,17 +178,21 @@ class Rv64iCompileTests(unittest.TestCase):
             "-fno-stack-protector",
             "-fomit-frame-pointer",
             "-Wl,-Ttext=0",
+            "-fno-keep-static-consts",
+            "-fno-tree-sra",
+            "-fno-tree-slp-vectorize",
+            "-fno-tree-ccp",
             "-fno-pic -fno-pie",
-            '"$SCRIPT_DIR/_start.S"',
+            "_start.S",
             '"$SRC" -o "$ELF"',
             "compile.py",
         ):
             self.assertIn(text, source)
 
-    def test_startup_matches_user_original(self):
+    def test_startup_uses_current_stack_top(self):
         source = (TOOLCHAIN_DIR / "_start.S").read_text("utf-8")
-        self.assertIn("addi sp, x0, 2047", source)
-        self.assertIn("addi x1, x0, 128", source)
+        self.assertIn("lui x2, 0x2", source)
+        self.assertIn("addi x2, x2, 0", source)
         self.assertIn("jal ra, main", source)
         self.assertIn("j end", source)
 
