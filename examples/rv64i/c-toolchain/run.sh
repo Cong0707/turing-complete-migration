@@ -14,7 +14,8 @@ riscv64-unknown-elf-gcc \
     -ffreestanding -nostdlib -lgcc -O0 \
     -fno-stack-protector \
     -fomit-frame-pointer \
-    -Wl,-Ttext=0 \
+    -mcmodel=medany \
+    -Wl,-T,linker.ld \
     -fno-keep-static-consts \
     -fno-tree-sra \
     -fno-tree-slp-vectorize \
